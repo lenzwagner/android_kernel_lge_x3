@@ -589,8 +589,15 @@ config TEGRA_SE_ON_CBUS
 	  This option enables SE clock to be derived from cbus
 
 config TEGRA_CBUS_CLOCK_DIVIDER
-	int "CBUS clock divider"
-	default "2"
+        int "CBUS clock divider"
+        default "2"
+
+config TEGRA_CONVSERVATIVE_GOV_ON_EARLYSUPSEND
+	bool "Use conservative cpu frequency governor when device enters early suspend"
+	depends on HAS_EARLYSUSPEND && CPU_FREQ
+	default n
+	help
+	 Also will restore to original cpu frequency governor when device is resumed
 
 config TEGRA_STAT_MON
         bool "Enable H/W statistics monitor"

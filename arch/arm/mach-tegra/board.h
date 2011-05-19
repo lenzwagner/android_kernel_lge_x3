@@ -202,6 +202,16 @@ void tegra_get_rightspeaker_board_info(struct board_info *bi);
 void tegra_get_leftspeaker_board_info(struct board_info *bi);
 int tegra_get_board_panel_id(void);
 
+#ifdef CONFIG_TEGRA_CONVSERVATIVE_GOV_ON_EARLYSUPSEND
+#define MAX_GOV_NAME_LEN 16
+extern char cpufreq_default_gov[][MAX_GOV_NAME_LEN];
+extern char *cpufreq_conservative_gov;
+
+void cpufreq_store_default_gov(void);
+void cpufreq_restore_default_gov(void);
+void cpufreq_change_gov(char *target_gov);
+#endif
+
 int get_core_edp(void);
 enum panel_type get_panel_type(void);
 int tegra_get_usb_port_owner_info(void);
