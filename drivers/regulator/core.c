@@ -1726,6 +1726,7 @@ static int _regulator_do_enable(struct regulator_dev *rdev)
 	}
 
 	trace_regulator_enable(rdev_get_name(rdev));
+	_notifier_call_chain(rdev, REGULATOR_EVENT_PRE_ENABLE, NULL);
 
 	if (rdev->ena_pin) {
 		ret = regulator_ena_gpio_ctrl(rdev, true);
@@ -1752,6 +1753,7 @@ static int _regulator_do_enable(struct regulator_dev *rdev)
 		udelay(delay);
 	}
 
+	_notifier_call_chain(rdev, REGULATOR_EVENT_POST_ENABLE, NULL);
 	trace_regulator_enable_complete(rdev_get_name(rdev));
 
 	return 0;
