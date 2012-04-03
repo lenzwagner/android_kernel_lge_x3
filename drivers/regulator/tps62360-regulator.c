@@ -333,6 +333,7 @@ static const struct regmap_config tps62360_regmap_config = {
 static int __devinit tps62360_probe(struct i2c_client *client,
 				     const struct i2c_device_id *id)
 {
+	struct regulator_config config = { };
 	struct tps62360_regulator_platform_data *pdata;
 	struct regulator_dev *rdev;
 	struct tps62360_chip *tps;
