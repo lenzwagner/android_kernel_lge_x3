@@ -175,6 +175,9 @@ enum regulator_type {
  * @irq: Interrupt number for the regulator.
  * @type: Indicates if the regulator is a voltage or current regulator.
  * @owner: Module providing the regulator, used for refcounting.
+
+ * @vsel_reg: Register for selector when using regulator_regmap_X_voltage_
+ * @vsel_mask: Mask for register bitfield used for selector
  */
 struct regulator_desc {
 	const char *name;
@@ -269,6 +272,9 @@ int regulator_mode_to_status(unsigned int);
 int regulator_set_voltage_time_sel(struct regulator_dev *rdev,
 				   unsigned int old_selector,
 				   unsigned int new_selector);
+
+int regulator_get_voltage_sel_regmap(struct regulator_dev *rdev);
+int regulator_set_voltage_sel_regmap(struct regulator_dev *rdev, unsigned sel);
 
 void *regulator_get_init_drvdata(struct regulator_init_data *reg_init_data);
 
