@@ -3371,7 +3371,7 @@ void cfg80211_report_obss_beacon(struct wiphy *wiphy,
  * @chan: main channel
  * @channel_type: HT mode
  */
-int cfg80211_can_beacon_sec_chan(struct wiphy *wiphy,
+bool cfg80211_can_beacon_sec_chan(struct wiphy *wiphy,
 				 struct ieee80211_channel *chan,
 				 enum nl80211_channel_type channel_type);
 
