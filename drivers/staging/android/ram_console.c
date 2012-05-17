@@ -16,7 +16,7 @@
 #include <linux/console.h>
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/persistent_ram.h>
+#include <linux/pstore_ram.h>
 #include <linux/platform_device.h>
 #include <linux/proc_fs.h>
 #include <linux/string.h>
