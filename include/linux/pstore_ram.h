@@ -24,6 +24,14 @@
 #include <linux/init.h>
 
 struct persistent_ram_buffer;
+struct rs_control;
+
+struct persistent_ram_ecc_info {
+	int block_size;
+	int ecc_size;
+	int symsize;
+	int poly;
+};
 
 struct persistent_ram_zone {
 	phys_addr_t paddr;
@@ -39,17 +47,14 @@ struct persistent_ram_zone {
 	struct rs_control *rs_decoder;
 	int corrected_bytes;
 	int bad_blocks;
-	int ecc_block_size;
-	int ecc_size;
-	int ecc_symsize;
-	int ecc_poly;
+	struct persistent_ram_ecc_info ecc_info;
 
 	char *old_log;
 	size_t old_log_size;
 };
 
 struct persistent_ram_zone *persistent_ram_new(phys_addr_t start, size_t size,
-					       u32 sig, int ecc_size);
+			u32 sig, struct persistent_ram_ecc_info *ecc_info);
 void persistent_ram_free(struct persistent_ram_zone *prz);
 void persistent_ram_zap(struct persistent_ram_zone *prz);
 
@@ -76,7 +81,7 @@ struct ramoops_platform_data {
 	unsigned long	console_size;
 	unsigned long	ftrace_size;
 	int		dump_oops;
-	int		ecc_size;
+	struct persistent_ram_ecc_info ecc_info;
 };
 
 #endif
