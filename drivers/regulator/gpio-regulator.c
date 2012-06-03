@@ -101,7 +101,7 @@ static int gpio_regulator_get_value(struct regulator_dev *dev)
 }
 
 static int gpio_regulator_set_value(struct regulator_dev *dev,
-					int min, int max)
+					int min, int max, unsigned *selector)
 {
 	struct gpio_regulator_data *data = rdev_get_drvdata(dev);
 	int ptr, target, state;
@@ -111,6 +111,10 @@ static int gpio_regulator_set_value(struct regulator_dev *dev,
 		if (data->states[ptr].value >= min &&
 		    data->states[ptr].value <= max)
 			target = data->states[ptr].gpios;
+			best_val = data->states[ptr].value;
+			if (selector)
+				*selector = ptr;
+		}
 
 	if (target < 0)
 		return -EINVAL;
@@ -128,7 +132,7 @@ static int gpio_regulator_set_voltage(struct regulator_dev *dev,
 					int min_uV, int max_uV,
 					unsigned *selector)
 {
-	return gpio_regulator_set_value(dev, min_uV, max_uV);
+	return gpio_regulator_set_value(dev, min_uV, max_uV, selector);
 }
 
 static int gpio_regulator_list_voltage(struct regulator_dev *dev,
@@ -145,7 +149,7 @@ static int gpio_regulator_list_voltage(struct regulator_dev *dev,
 static int gpio_regulator_set_current_limit(struct regulator_dev *dev,
 					int min_uA, int max_uA)
 {
-	return gpio_regulator_set_value(dev, min_uA, max_uA);
+	return gpio_regulator_set_value(dev, min_uA, max_uA, NULL);
 }
 
 static struct regulator_ops gpio_regulator_voltage_ops = {
