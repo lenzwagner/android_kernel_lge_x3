@@ -162,7 +162,7 @@ static inline void eth_broadcast_addr(u8 *addr)
 static inline void eth_hw_addr_random(struct net_device *dev)
 {
 	dev->addr_assign_type |= NET_ADDR_RANDOM;
-	random_ether_addr(dev->dev_addr);
+	eth_random_addr(dev->dev_addr);
 }
 
 /**
