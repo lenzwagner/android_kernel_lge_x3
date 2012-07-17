@@ -384,7 +384,7 @@ static int persistent_ram_buffer_map(phys_addr_t start, phys_addr_t size,
 }
 
 static int __devinit persistent_ram_post_init(struct persistent_ram_zone *prz,
-					      int ecc_size)
+					      u32 sig, int ecc_size)
 {
 	int ret;
 
@@ -394,7 +394,9 @@ static int __devinit persistent_ram_post_init(struct persistent_ram_zone *prz,
 	if (ret)
 		return ret;
 
-	if (prz->buffer->sig == PERSISTENT_RAM_SIG) {
+	sig ^= PERSISTENT_RAM_SIG;
+
+	if (prz->buffer->sig == sig) {
 		if (buffer_size(prz) > prz->buffer_size ||
 		    buffer_start(prz) > buffer_size(prz))
 			pr_info("persistent_ram: found existing invalid buffer,"
@@ -411,7 +413,8 @@ static int __devinit persistent_ram_post_init(struct persistent_ram_zone *prz,
 			" (sig = 0x%08x)\n", prz->buffer->sig);
 	}
 
-	prz->buffer->sig = PERSISTENT_RAM_SIG;
+	prz->buffer->sig = sig;
+	persistent_ram_zap(prz);
 	atomic_set(&prz->buffer->start, 0);
 	atomic_set(&prz->buffer->size, 0);
 
@@ -431,7 +434,7 @@ void persistent_ram_free(struct persistent_ram_zone *prz)
 }
 
 struct persistent_ram_zone * __devinit persistent_ram_new(phys_addr_t start,
-							  size_t size,
+							  size_t size, u32 sig,
 							  int ecc_size)
 {
 	struct persistent_ram_zone *prz;
@@ -447,7 +450,7 @@ struct persistent_ram_zone * __devinit persistent_ram_new(phys_addr_t start,
 	if (ret)
 		goto err;
 
-	ret = persistent_ram_post_init(prz, sig, ecc_info);
+	ret = persistent_ram_post_init(prz, sig, ecc_size);
 	if (ret)
 		goto err;
 
