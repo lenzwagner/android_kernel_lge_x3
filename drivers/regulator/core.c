@@ -2549,6 +2549,9 @@ static int _regulator_do_set_voltage(struct regulator_dev *rdev,
 		if (ret >= 0) {
 			best_val = rdev->desc->ops->list_voltage(rdev, ret);
 			if (min_uV <= best_val && max_uV >= best_val) {
+				if (_regulator_is_enabled(rdev))
+					_notifier_call_chain(rdev,
+					REGULATOR_EVENT_OUT_PRECHANGE, (void *)ret);
 				selector = ret;
 				if (old_selector == selector)
 					ret = 0;
