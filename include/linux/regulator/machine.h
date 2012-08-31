@@ -32,6 +32,7 @@ struct regulator;
  *           board/machine.
  * STATUS:   Regulator can be enabled and disabled.
  * DRMS:     Dynamic Regulator Mode Switching is enabled for this regulator.
+ * BYPASS:   Regulator can be put into bypass mode
  * CONTROL:  Dynamic change control mode of Regulator i.e I2C or PWM.
  */
 
@@ -40,7 +41,8 @@ struct regulator;
 #define REGULATOR_CHANGE_MODE		0x4
 #define REGULATOR_CHANGE_STATUS		0x8
 #define REGULATOR_CHANGE_DRMS		0x10
-#define REGULATOR_CHANGE_CONTROL	0x20
+#define REGULATOR_CHANGE_BYPASS		0x20
+#define REGULATOR_CHANGE_CONTROL	0x40
 
 /**
  * struct regulator_state - regulator state during low power system states
