@@ -1865,6 +1865,9 @@ int regulator_disable_deferred(struct regulator *regulator, int ms)
 	if (regulator->always_on)
 		return 0;
 
+	if (!ms)
+		return regulator_disable(regulator);
+
 	mutex_lock(&rdev->mutex);
 	rdev->deferred_disables++;
 	mutex_unlock(&rdev->mutex);
