@@ -410,14 +410,15 @@ struct tegra_dc_out {
 	int video_min_bw;
 
 	int	(*enable)(void);
+	int	(*enable)(struct device *);
 	int	(*postpoweron)(void);
-#ifdef CONFIG_MACH_LGE
-	int	(*prepoweron)(void); /*wakeup time from LP0 ** Nvidia patch**/
+#ifdef CONFIG_MACH_X3
+	int	(*prepoweron)(void); /* wakeup time from LP0 ** Nvidia patch */	
 #endif
 	int	(*prepoweroff)(void);
 	int	(*disable)(void);
 
-	int	(*hotplug_init)(void);
+	int	(*hotplug_init)(struct device *);
 	int	(*postsuspend)(void);
 	int	(*bridge_reset)(void);
 	int	(*ic_reset)(void);
