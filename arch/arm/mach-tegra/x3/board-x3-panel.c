@@ -100,7 +100,8 @@ static tegra_dc_bl_output x3_bl_output_measured = {
 };
 
 static p_tegra_dc_bl_output bl_output;
-//#if 0
+
+#if 0
 static int x3_backlight_notify(struct device *unused, int brightness)
 {
 	int cur_sd_brightness = atomic_read(&sd_brightness);
@@ -168,7 +169,7 @@ static struct platform_device x3_backlight_device = {
 		.platform_data = &x3_backlight_data,
 	},
 };
-//#endif
+#endif
 
 static bool first_disp_boot = TRUE;
 static int x3_panel_enable(struct device *dev)
@@ -467,7 +468,12 @@ static struct tegra_dc_sd_settings x3_sd_settings = {
 			},
 		},
 	.sd_brightness = &sd_brightness,
-	.bl_device = &x3_backlight_device,
+//	.bl_device = &x3_backlight_device,
+#if IS_EXTERNAL_PWM
+	.bl_device_name = "pwm-backlight",
+#else
+	.bl_device_name = "tegra-pwm-bl",
+#endif
 };
 //#endif
 
@@ -621,11 +627,11 @@ static struct platform_device *x3_gfx_devices[] __initdata = {
 #endif
 };
 
-//#if 0
+#if 0
 static struct platform_device *x3_bl_devices[]  = {
 	&x3_disp1_backlight_device,
 };
-//#endif
+#endif
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 /* put early_suspend/late_resume handlers here for the display in order
