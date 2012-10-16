@@ -341,6 +341,7 @@ struct tegra_dc_sd_settings {
 	struct tegra_dc_sd_rgb coeff;
 
 	bool soft_clipping_correction;
+	bool use_vpulse2;
 
 	struct tegra_dc_sd_fc fc;
 	struct tegra_dc_sd_blp blp;
@@ -451,8 +452,12 @@ struct tegra_dc_out {
 #define TEGRA_DC_ORDER_RED_BLUE		0
 #define TEGRA_DC_ORDER_BLUE_RED		1
 
+/* Errands use the interrupts */
 #define V_BLANK_FLIP		0
 #define V_BLANK_NVSD		1
+
+#define V_PULSE2_FLIP		0
+#define V_PULSE2_NVSD		1
 
 struct tegra_dc;
 struct nvmap_handle_ref;
