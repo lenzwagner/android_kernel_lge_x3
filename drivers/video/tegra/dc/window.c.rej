@@ -1,9 +1,0 @@
-diff a/drivers/video/tegra/dc/window.c b/drivers/video/tegra/dc/window.c	(rejected hunks)
-@@ -529,6 +542,7 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
- 	tegra_dc_writel(dc, update_mask, DC_CMD_STATE_CONTROL);
- 
- 	tegra_dc_release_dc_out(dc);
-+	/* tegra_dc_io_end() is called in tegra_dc_sync_windows() */
- 	mutex_unlock(&dc->lock);
- 	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
- 		mutex_unlock(&dc->one_shot_lock);
