@@ -576,11 +576,10 @@ static inline bool fast_cache_maint_outer(unsigned long start,
 }
 #endif
 
+#if defined(CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS)
 static bool fast_cache_maint(struct nvmap_client *client, struct nvmap_handle *h,
 	unsigned long start, unsigned long end, unsigned int op)
 {
-	int ret = false;
-#if defined(CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS)
 	if ((op == NVMAP_CACHE_OP_INV) ||
 		((end - start) < cache_maint_inner_threshold))
 		return false;
