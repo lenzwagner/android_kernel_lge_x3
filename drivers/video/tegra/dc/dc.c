@@ -1571,6 +1571,7 @@ static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 	unsigned long status;
 	unsigned long underflow_mask;
 	u32 val;
+	int need_disable = 0;
 
 	if (!nvhost_module_powered_ext(dc->ndev)) {
 		WARN(1, "IRQ when DC not powered!\n");
@@ -1609,8 +1610,11 @@ static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 
 	/* update video mode if it has changed since the last frame */
 	if (status & (FRAME_END_INT | V_BLANK_INT))
-		tegra_dc_update_mode(dc);
+		if (tegra_dc_update_mode(dc))
+			need_disable = 1; /* force display off on error */
 
+	if (need_disable)
+		tegra_dc_disable(dc);
 	return IRQ_HANDLED;
 #else /* CONFIG_TEGRA_FPGA_PLATFORM */
 	return IRQ_NONE;
