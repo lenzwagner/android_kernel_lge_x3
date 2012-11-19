@@ -187,7 +187,7 @@ static int __devinit lp8720_probe(struct i2c_client *client, const struct i2c_de
 	return 0;
 }
 
-static int __devexit lp8720_remove(struct i2c_client *client)
+static int  lp8720_remove(struct i2c_client *client)
 {
 	//struct lp8720_platform_data *pdata;
 	//pdata = client->dev.platform_data;
