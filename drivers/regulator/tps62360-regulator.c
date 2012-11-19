@@ -280,7 +280,7 @@ static struct regulator_ops tps62360_dcdc_ops = {
 	.get_mode		= tps62360_get_mode,
 };
 
-static int __devinit tps62360_init_dcdc(struct tps62360_chip *tps,
+static int tps62360_init_dcdc(struct tps62360_chip *tps,
 		struct tps62360_regulator_platform_data *pdata)
 {
 	int ret;
