@@ -383,7 +383,7 @@ err:
 	return ret;
 }
 
-static __devexit int wm831x_gp_ldo_remove(struct platform_device *pdev)
+static int wm831x_gp_ldo_remove(struct platform_device *pdev)
 {
 	struct wm831x_ldo *ldo = platform_get_drvdata(pdev);
 
@@ -651,7 +651,7 @@ err:
 	return ret;
 }
 
-static __devexit int wm831x_aldo_remove(struct platform_device *pdev)
+static int wm831x_aldo_remove(struct platform_device *pdev)
 {
 	struct wm831x_ldo *ldo = platform_get_drvdata(pdev);
 
@@ -839,7 +839,7 @@ err:
 	return ret;
 }
 
-static __devexit int wm831x_alive_ldo_remove(struct platform_device *pdev)
+static int wm831x_alive_ldo_remove(struct platform_device *pdev)
 {
 	struct wm831x_ldo *ldo = platform_get_drvdata(pdev);
 

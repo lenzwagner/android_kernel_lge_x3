@@ -367,7 +367,7 @@ static int __devinit tps51632_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int __devexit tps51632_remove(struct i2c_client *client)
+static int tps51632_remove(struct i2c_client *client)
 {
 	struct tps51632_chip *tps = i2c_get_clientdata(client);
 

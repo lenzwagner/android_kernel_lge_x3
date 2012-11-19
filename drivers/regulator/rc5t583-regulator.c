@@ -326,7 +326,7 @@ clean_exit:
 	return ret;
 }
 
-static int __devexit rc5t583_regulator_remove(struct platform_device *pdev)
+static int rc5t583_regulator_remove(struct platform_device *pdev)
 {
 	struct rc5t583_regulator *regs = platform_get_drvdata(pdev);
 	int id;
