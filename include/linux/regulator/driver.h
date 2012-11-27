@@ -194,6 +194,7 @@ enum regulator_type {
  *
  * @min_uV: Voltage given by the lowest selector (if linear mapping)
  * @uV_step: Voltage increase with each selector (if linear mapping)
+ * @linear_min_sel: Minimal selector for starting linear mapping
  * @ramp_delay: Time to settle down after voltage change (unit: uV/us)
  * @volt_table: Voltage mapping table (if table based mapping)
  *
@@ -214,13 +215,14 @@ struct regulator_desc {
 	int irq;
 	enum regulator_type type;
 	struct module *owner;
- 
+
 	unsigned int min_uV;
 	unsigned int uV_step;
+	unsigned int linear_min_sel;
+	unsigned int ramp_delay;
 
 	const unsigned int *volt_table;
 
-	unsigned int ramp_delay;
 	unsigned int vsel_reg;
 	unsigned int vsel_mask;
 	unsigned int enable_reg;
