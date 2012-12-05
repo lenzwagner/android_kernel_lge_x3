@@ -3929,7 +3929,7 @@ static int tegra_dsi_host_resume(struct tegra_dc *dc)
 	dsi->host_suspended = false;
 fail:
 	tegra_dc_io_end(dc);
-	mutex_unlock(&dsi->host_lock);
+	mutex_unlock(&dsi->host_resume_lock);
 	return err;
 }
 

@@ -157,6 +157,7 @@ static void tegra_dc_rgb_disable(struct tegra_dc *dc)
 	tegra_dc_writel(dc, 0x00000000, DC_CMD_DISPLAY_POWER_CONTROL);
 
 	tegra_dc_write_table(dc, tegra_dc_rgb_disable_pintable);
+}
 
 static long tegra_dc_rgb_setup_clk(struct tegra_dc *dc, struct clk *clk)
 {
@@ -189,8 +190,6 @@ static long tegra_dc_rgb_setup_clk(struct tegra_dc *dc, struct clk *clk)
 	}
 
 	return tegra_dc_pclk_round_rate(dc, dc->mode.pclk);
-}
-
 }
 
 struct tegra_dc_out_ops tegra_dc_rgb_ops = {
