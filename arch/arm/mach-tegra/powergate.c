@@ -1265,6 +1265,14 @@ int tegra_unpowergate_partition_with_clk_on(int id)
 #if !defined(CONFIG_ARCH_TEGRA_2x_SOC) && !defined(CONFIG_ARCH_TEGRA_3x_SOC)
 	bool is_pg_skip;
 
+	WARN_ONCE(atomic_read(&ref_count_a) < 0, "ref count A underflow");
+	WARN_ONCE(atomic_read(&ref_count_b) < 0, "ref count B underflow");
+	if (id == TEGRA_POWERGATE_DISA && atomic_inc_return(&ref_count_a) != 1)
+		return 0;
+	else if (id == TEGRA_POWERGATE_DISB &&
+		atomic_inc_return(&ref_count_b) != 1)
+		return 0;
+
 	is_pg_skip = skip_pg_check(id, true);
 	if (is_pg_skip)
 		return 0;
@@ -1578,6 +1586,14 @@ int tegra_powergate_partition_with_clk_off(int id)
 	int ret = 0;
 #if !defined(CONFIG_ARCH_TEGRA_2x_SOC) && !defined(CONFIG_ARCH_TEGRA_3x_SOC)
 	bool is_pg_skip;
+
+	WARN_ONCE(atomic_read(&ref_count_a) < 0, "ref count A underflow");
+	WARN_ONCE(atomic_read(&ref_count_b) < 0, "ref count B underflow");
+	if (id == TEGRA_POWERGATE_DISA && atomic_dec_return(&ref_count_a) != 0)
+		return 0;
+	else if (id == TEGRA_POWERGATE_DISB &&
+		atomic_dec_return(&ref_count_b) != 0)
+		return 0;
 
 	is_pg_skip = skip_pg_check(id, false);
 	if (is_pg_skip)
