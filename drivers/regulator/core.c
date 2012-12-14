@@ -319,6 +319,20 @@ static int regulator_check_control(struct regulator_dev *rdev)
 	return 0;
 }
 
+/* dynamic regulator control mode switching constraint check */
+static int regulator_check_control(struct regulator_dev *rdev)
+{
+	if (!rdev->constraints) {
+		rdev_err(rdev, "no constraints\n");
+		return -ENODEV;
+	}
+	if (!(rdev->constraints->valid_ops_mask & REGULATOR_CHANGE_CONTROL)) {
+		rdev_err(rdev, "operation not allowed\n");
+		return -EPERM;
+	}
+	return 0;
+}
+
 static ssize_t regulator_uV_set(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -3200,7 +3214,7 @@ int regulator_allow_bypass(struct regulator *regulator, bool enable)
 }
 EXPORT_SYMBOL_GPL(regulator_allow_bypass);
 
-/**
+/*
  * regulator_set_control_mode - set regulator control mode
  * @regulator: regulator source
  * @mode: control mode - one of the REGULATOR_CONTROL_MODE constants
