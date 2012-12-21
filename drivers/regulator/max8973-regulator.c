@@ -340,8 +340,8 @@ static struct regulator_ops max8973_dcdc_ops = {
 	.get_mode		= max8973_dcdc_get_mode,
 };
 
-static int __devinit max8973_init_dcdc(struct max8973_chip *max,
-		struct max8973_regulator_platform_data *pdata)
+static int max8973_init_dcdc(struct max8973_chip *max,
+			     struct max8973_regulator_platform_data *pdata)
 {
 	int ret;
 	uint8_t	control1 = 0;
@@ -585,7 +585,7 @@ static struct i2c_driver max8973_i2c_driver = {
 		.owner = THIS_MODULE,
 	},
 	.probe = max8973_probe,
-	.remove = __devexit_p(max8973_remove),
+	.remove = max8973_remove,
 	.id_table = max8973_id,
 };
 
