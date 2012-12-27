@@ -2091,6 +2091,9 @@ static void _tegra_dc_controller_disable(struct tegra_dc *dc)
 		}
 	}
 	trace_display_disable(dc);
+
+	tegra_dc_clk_disable(dc);
+	tegra_dc_release_dc_out(dc);
 }
 
 void tegra_dc_stats_enable(struct tegra_dc *dc, bool enable)
