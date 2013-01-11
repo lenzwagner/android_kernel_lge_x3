@@ -142,12 +142,10 @@ int cpuidle_idle_call(void)
 
 	target_state = &dev->states[next_state];
 
-	trace_power_start_rcuidle(POWER_CSTATE, next_state, dev->cpu);
 	trace_cpu_idle_rcuidle(next_state, dev->cpu);
 
 	entered_state = target_state->enter(dev, next_state);
 
-	trace_power_end_rcuidle(dev->cpu);
 	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, dev->cpu);
 
 	if (entered_state >= 0) {
