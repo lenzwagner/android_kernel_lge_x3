@@ -2040,6 +2040,8 @@ static int tegra_dsi_init_hw(struct tegra_dc *dc,
 	u32 i;
 
 	regulator_enable(dsi->avdd_dsi_csi);
+	/* stablization delay */
+	mdelay(50);
 
 	tegra_dsi_writel(dsi,
 		DSI_POWER_CONTROL_LEG_DSI_ENABLE(TEGRA_DSI_DISABLE),
