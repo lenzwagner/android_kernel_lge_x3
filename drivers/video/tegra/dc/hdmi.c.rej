@@ -1,0 +1,9 @@
+diff a/drivers/video/tegra/dc/hdmi.c b/drivers/video/tegra/dc/hdmi.c	(rejected hunks)
+@@ -873,6 +927,7 @@ static void tegra_dc_hdmi_detect_worker(struct work_struct *work)
+ 	tegra_dc_set_default_videomode(dc);
+ #endif
+ 	if (!tegra_dc_hdmi_detect(dc)) {
++		dev_dbg(&dc->ndev->dev, "HDMI disconnect\n");
+ 		dc->connected = false;
+ 		tegra_dc_disable(dc);
+ 
