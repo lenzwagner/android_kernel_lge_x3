@@ -147,6 +147,8 @@ struct suspend_context tegra_sctx;
 #define TEGRA_POWER_CPU_PWRREQ_OE	(1 << 16)  /* CPU power request enable */
 #define TEGRA_POWER_CPUPWRGOOD_EN	(1 << 19)  /* CPU power good enable */
 
+#define TEGRA_DPAD_ORIDE_SYS_CLK_REQ	(1 << 21)
+
 #define PMC_CTRL		0x0
 #define PMC_CTRL_LATCH_WAKEUPS	(1 << 5)
 #define PMC_WAKE_MASK		0xc
@@ -1424,6 +1426,12 @@ out:
 	if (!pdata->combined_req)
 		reg |= TEGRA_POWER_PWRREQ_OE;
 	pmc_32kwritel(reg, PMC_CTRL);
+
+	if (pdata->sysclkreq_gpio) {
+		reg = readl(pmc + PMC_DPAD_ORIDE);
+		reg &= ~TEGRA_DPAD_ORIDE_SYS_CLK_REQ;
+		pmc_32kwritel(reg, PMC_DPAD_ORIDE);
+	}
 
 	if (pdata->suspend_mode == TEGRA_SUSPEND_LP0)
 		tegra_lp0_suspend_init();
