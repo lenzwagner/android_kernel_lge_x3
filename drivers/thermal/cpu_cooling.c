@@ -223,8 +223,8 @@ static int cpufreq_apply_cooling(struct cpufreq_cooling_device *cpufreq_device,
 				unsigned long cooling_state)
 {
 	unsigned int cpuid, clip_freq;
-	struct cpumask *maskPtr = &cpufreq_device->allowed_cpus;
-	unsigned int cpu = cpumask_any(maskPtr);
+	struct cpumask *mask = &cpufreq_device->allowed_cpus;
+	unsigned int cpu = cpumask_any(mask);
 
 
 	/* Check if the old cooling action is same as new cooling action */
@@ -239,7 +239,7 @@ static int cpufreq_apply_cooling(struct cpufreq_cooling_device *cpufreq_device,
 	cpufreq_device->cpufreq_val = clip_freq;
 	notify_device = cpufreq_device;
 
-	for_each_cpu(cpuid, maskPtr) {
+	for_each_cpu(cpuid, mask) {
 		if (is_cpufreq_valid(cpuid))
 			cpufreq_update_policy(cpuid);
 	}
@@ -290,12 +290,12 @@ static int cpufreq_get_max_state(struct thermal_cooling_device *cdev,
 				 unsigned long *state)
 {
 	struct cpufreq_cooling_device *cpufreq_device = cdev->devdata;
-	struct cpumask *maskPtr = &cpufreq_device->allowed_cpus;
+	struct cpumask *mask = &cpufreq_device->allowed_cpus;
 	unsigned int cpu;
 	unsigned long count = 0;
 	int ret;
 
-	cpu = cpumask_any(maskPtr);
+	cpu = cpumask_any(mask);
 
 	ret = get_property(cpu, 0, (unsigned int *)&count, GET_MAXL);
 
