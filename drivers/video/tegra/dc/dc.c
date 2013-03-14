@@ -1592,6 +1592,12 @@ static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 	u32 val;
 	int need_disable = 0;
 
+	mutex_lock(&dc->lock);
+	if (!dc->enabled || !tegra_dc_is_powered(dc)) {
+		mutex_unlock(&dc->lock);
+		return IRQ_HANDLED;
+	}
+
 	if (!nvhost_module_powered_ext(dc->ndev)) {
 		WARN(1, "IRQ when DC not powered!\n");
 		tegra_dc_io_start(dc);
@@ -2280,56 +2286,6 @@ static void tegra_dc_underflow_worker(struct work_struct *work)
 	mutex_unlock(&dc->lock);
 }
 
-#ifdef CONFIG_ARCH_TEGRA_11x_SOC
-/* A mutex used to protect the critical section used by both DC heads. */
-static struct mutex tegra_dc_powergate_status_lock;
-
-/* defer turning off DISA until DISB is turned off */
-void tegra_dc_powergate_locked(struct tegra_dc *dc)
-{
-	struct tegra_dc *dc_partner;
-
-	mutex_lock(&tegra_dc_powergate_status_lock);
-	/* Get the handler of the other display controller. */
-	dc_partner = tegra_dc_get_dc(dc->ndev->id ^ 1);
-	if (!dc_partner)
-		_tegra_dc_powergate_locked(dc);
-	else if (dc->powergate_id == TEGRA_POWERGATE_DISA) {
-		/* If DISB is powergated, then powergate DISA. */
-		if (!dc_partner->powered)
-			_tegra_dc_powergate_locked(dc);
-	} else if (dc->powergate_id == TEGRA_POWERGATE_DISB) {
-		/* If DISA is enabled, only powergate DISB;
-		 * otherwise, powergate DISA and DISB.
-		 * */
-		if (dc_partner->enabled) {
-			_tegra_dc_powergate_locked(dc);
-		} else {
-			_tegra_dc_powergate_locked(dc);
-			_tegra_dc_powergate_locked(dc_partner);
-		}
-	}
-	mutex_unlock(&tegra_dc_powergate_status_lock);
-}
-
-
-/* to turn on DISB we must first power on DISA */
-void tegra_dc_unpowergate_locked(struct tegra_dc *dc)
-{
-	mutex_lock(&tegra_dc_powergate_status_lock);
-	if (dc->powergate_id == TEGRA_POWERGATE_DISB) {
-		struct tegra_dc *dc_partner;
-
-		/* Get the handler of the other display controller. */
-		dc_partner = tegra_dc_get_dc(dc->ndev->id ^ 1);
-		if (dc_partner)
-			_tegra_dc_unpowergate_locked(dc_partner);
-	}
-	_tegra_dc_unpowergate_locked(dc);
-	mutex_unlock(&tegra_dc_powergate_status_lock);
-}
-#endif
-
 #ifdef CONFIG_SWITCH
 static ssize_t switch_modeset_print_mode(struct switch_dev *sdev, char *buf)
 {
@@ -2470,9 +2426,6 @@ static int tegra_dc_probe(struct platform_device *ndev)
 
 	mutex_init(&dc->lock);
 	mutex_init(&dc->one_shot_lock);
-#ifdef CONFIG_ARCH_TEGRA_11x_SOC
-	mutex_init(&tegra_dc_powergate_status_lock);
-#endif
 	init_completion(&dc->frame_end_complete);
 	init_waitqueue_head(&dc->wq);
 	init_waitqueue_head(&dc->timestamp_wq);
