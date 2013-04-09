@@ -721,6 +721,12 @@ extern struct lcd_gamma_rgb cmdlineRGBvalue;
 
 #endif
 
+#ifdef CONFIG_PM_SLEEP
+void tegra_log_resume_time(void);
+#else
+#define tegra_log_resume_time()
+#endif
+
 /* table of electrical settings, must be in acending order. */
 struct tmds_config {
 	int pclk;
