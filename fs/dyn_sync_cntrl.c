@@ -22,22 +22,26 @@
 
 #include <linux/writeback.h>
 
-#define DYN_FSYNC_VERSION 1
+#define DYN_FSYNC_VERSION_MAJOR 1
+#define DYN_FSYNC_VERSION_MINOR 2
 
 /*
- * fsync_mutex protects dyn_fsync_active during early suspend / lat resume transitions
+ * fsync_mutex protects dyn_fsync_active during early suspend / late resume
+ * transitions
  */
 static DEFINE_MUTEX(fsync_mutex);
 
-bool early_suspend_active = false;
-static bool dyn_fsync_active = true;
+bool early_suspend_active __read_mostly = false;
+bool dyn_fsync_active __read_mostly = true;
 
-static ssize_t dyn_fsync_active_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+static ssize_t dyn_fsync_active_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
 {
 	return sprintf(buf, "%u\n", (dyn_fsync_active ? 1 : 0));
 }
 
-static ssize_t dyn_fsync_active_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t dyn_fsync_active_store(struct kobject *kobj,
+		struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	unsigned int data;
 
