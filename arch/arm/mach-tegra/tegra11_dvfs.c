@@ -430,7 +430,7 @@ static void __init init_rail_vmin_thermal_profile(
 {
 	int i, min_mv;
 
-	for (i = 0; i < MAX_THERMAL_FLOORS - 1; i++) {
+	for (i = 0; i < MAX_THERMAL_LIMITS - 1; i++) {
 		if (!therm_floors_table[i+1])
 			break;
 
