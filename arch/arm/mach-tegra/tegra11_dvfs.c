@@ -63,7 +63,7 @@ static struct dvfs_rail tegra11_dvfs_rail_vdd_cpu = {
 	.min_millivolts = 800,
 	.step = VDD_SAFE_STEP,
 	.jmp_to_zero = true,
-	.pll_mode_cdev = &cpu_cdev,
+	.vmin_cdev = &cpu_vmin_cdev,
 };
 
 static struct dvfs_rail tegra11_dvfs_rail_vdd_core = {
@@ -71,7 +71,7 @@ static struct dvfs_rail tegra11_dvfs_rail_vdd_core = {
 	.max_millivolts = 1400,
 	.min_millivolts = 800,
 	.step = VDD_SAFE_STEP,
-	.pll_mode_cdev = &core_cdev,
+	.vmin_cdev = &core_vmin_cdev,
 };
 
 static struct dvfs_rail *tegra11_dvfs_rails[] = {
@@ -424,7 +424,7 @@ module_param_cb(disable_cpu, &tegra_dvfs_disable_cpu_ops,
  * - and the lowest floor is above rail minimum voltage in pll and
  *   in dfll mode (if applicable)
  */
-static void __init init_rail_thermal_profile(
+static void __init init_rail_vmin_thermal_profile(
 	int *therm_trips_table, int *therm_floors_table,
 	struct dvfs_rail *rail, struct dvfs_dfll_data *d)
 {
@@ -451,10 +451,10 @@ static void __init init_rail_thermal_profile(
 	rail->therm_mv_floors = therm_floors_table;
 	rail->therm_mv_floors_num = i + 1;
 
-	/* Setup trip-points, use the same trips in dfll mode (if applicable) */
-	if (rail->pll_mode_cdev) {
-		rail->pll_mode_cdev->trip_temperatures_num = i + 1;
-		rail->pll_mode_cdev->trip_temperatures = therm_trips_table;
+	/* Setup trip-points if applicable */
+	if (rail->vmin_cdev) {
+		rail->vmin_cdev->trip_temperatures_num = i + 1;
+		rail->vmin_cdev->trip_temperatures = therm_trips_table;
 	}
 }
 
@@ -766,10 +766,10 @@ void __init tegra11x_init_dvfs(void)
 	BUG_ON((i == ARRAY_SIZE(cpu_cvb_dvfs_table)) || ret);
 
 	/* Init thermal floors */
-	init_rail_thermal_profile(cpu_cvb_dvfs_table[i].therm_trips_table,
+	init_rail_vmin_thermal_profile(cpu_cvb_dvfs_table[i].therm_trips_table,
 		cpu_cvb_dvfs_table[i].therm_floors_table,
 		&tegra11_dvfs_rail_vdd_cpu, &cpu_dvfs.dfll_data);
-	init_rail_thermal_profile(vdd_core_therm_trips_table,
+	init_rail_vmin_thermal_profile(vdd_core_therm_trips_table,
 		vdd_core_therm_floors_table, &tegra11_dvfs_rail_vdd_core, NULL);
 
 	/* Init rail structures and dependencies */
