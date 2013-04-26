@@ -8,3 +8,4 @@ obj-$(CONFIG_EDP_FRAMEWORK)	+= edp_fair.o
 obj-$(CONFIG_DEBUG_FS)	+= edp_debug.o
 obj-$(CONFIG_EDP_FRAMEWORK)	+= edp_bestfit.o
 obj-$(CONFIG_EDP_FRAMEWORK)	+= edp_temporal.o
+obj-y			+= psy_depletion.o
