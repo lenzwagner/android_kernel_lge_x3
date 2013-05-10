@@ -723,8 +723,10 @@ extern struct lcd_gamma_rgb cmdlineRGBvalue;
 
 #ifdef CONFIG_PM_SLEEP
 void tegra_log_resume_time(void);
+void tegra_log_suspend_time(void);
 #else
 #define tegra_log_resume_time()
+#define tegra_log_suspend_time()
 #endif
 
 /* table of electrical settings, must be in acending order. */
