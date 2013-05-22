@@ -19,7 +19,8 @@
 #include <linux/sysfs.h>
 #include <linux/earlysuspend.h>
 #include <linux/mutex.h>
-
+#include <linux/notifier.h>
+#include <linux/reboot.h>
 #include <linux/writeback.h>
 
 #define DYN_FSYNC_VERSION_MAJOR 1
@@ -96,17 +97,20 @@ static struct attribute_group dyn_fsync_active_attr_group =
 
 static struct kobject *dyn_fsync_kobj;
 
+static void dyn_fsync_force_flush(void)
+{
+	/* flush all outstanding buffers */
+	wakeup_flusher_threads(0);
+	sync_filesystems(0);
+	sync_filesystems(1);
+}
+
 static void dyn_fsync_early_suspend(struct early_suspend *h)
 {
 	mutex_lock(&fsync_mutex);
 	if (dyn_fsync_active) {
 		early_suspend_active = true;
-#if 1
-		/* flush all outstanding buffers */
-		wakeup_flusher_threads(0);
-		sync_filesystems(0);
-		sync_filesystems(1);
-#endif
+		dyn_fsync_force_flush();
 	}
 	mutex_unlock(&fsync_mutex);
 }
@@ -125,11 +129,27 @@ static struct early_suspend dyn_fsync_early_suspend_handler =
 		.resume = dyn_fsync_late_resume,
 	};
 
+static int dyn_fsync_panic_event(struct notifier_block *this,
+		unsigned long event, void *ptr)
+{
+	early_suspend_active = true;
+	dyn_fsync_force_flush();
+	//pr_warn("dyn fsync: panic: force flush!\n");
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block dyn_fsync_panic_block = {
+	.notifier_call  = dyn_fsync_panic_event,
+	.priority       = INT_MAX,
+};
+
 static int dyn_fsync_init(void)
 {
 	int sysfs_result;
 
 	register_early_suspend(&dyn_fsync_early_suspend_handler);
+	register_reboot_notifier(&dyn_fsync_notifier);
 
 	dyn_fsync_kobj = kobject_create_and_add("dyn_fsync", kernel_kobj);
 	if (!dyn_fsync_kobj) {
@@ -149,6 +169,7 @@ static int dyn_fsync_init(void)
 static void dyn_fsync_exit(void)
 {
 	unregister_early_suspend(&dyn_fsync_early_suspend_handler);
+	unregister_reboot_notifier(&dyn_fsync_notifier);
 
 	if (dyn_fsync_kobj != NULL)
 		kobject_put(dyn_fsync_kobj);
