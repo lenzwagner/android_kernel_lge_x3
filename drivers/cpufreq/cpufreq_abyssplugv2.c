@@ -115,7 +115,7 @@ static unsigned int bds_enable;	/* number of CPUs using this policy */
  */
 static DEFINE_MUTEX(bds_mutex);
 
-static struct workqueue_struct *input_wq;
+static struct workqueue_struct *bds_wq;
 
 static DEFINE_PER_CPU(struct work_struct, bds_refresh_work);
 
@@ -739,7 +739,7 @@ static void do_bds_timer(struct work_struct *work)
 			bds_info->freq_lo, CPUFREQ_RELATION_H);
 		delay = bds_info->freq_lo_jiffies;
 	}
-	schedule_delayed_work_on(cpu, &bds_info->work, delay);
+	queue_delayed_work_on(cpu, bds_wq, &bds_info->work, delay);
 	mutex_unlock(&bds_info->timer_mutex);
 }
 
@@ -753,7 +753,7 @@ static inline void bds_timer_init(struct cpu_bds_info_s *bds_info)
 
 	bds_info->sample_type = BDS_NORMAL_SAMPLE;
 	INIT_DEFERRABLE_WORK(&bds_info->work, do_bds_timer);
-	schedule_delayed_work_on(bds_info->cpu, &bds_info->work, delay);
+	queue_delayed_work_on(bds_info->cpu, bds_wq, &bds_info->work, delay);
 }
 
 static inline void bds_timer_exit(struct cpu_bds_info_s *bds_info)
@@ -827,7 +827,7 @@ static void bds_input_event(struct input_handle *handle, unsigned int type,
 		}
 
 		for_each_online_cpu(i) {
-			queue_work_on(i, input_wq, &per_cpu(bds_refresh_work, i));
+			queue_work_on(i, bds_wq, &per_cpu(bds_refresh_work, i));
 		}
 	}
 }
@@ -1017,9 +1017,9 @@ static int __init cpufreq_gov_bds_init(void)
 			MIN_SAMPLING_RATE_RATIO * jiffies_to_usecs(10);
 	}
 
-	input_wq = create_workqueue("iewq");
-	if (!input_wq) {
-		printk(KERN_ERR "Failed to create iewq workqueue\n");
+	bds_wq = alloc_workqueue("abyssplugv2_bds_wq", WQ_HIGHPRI, 0);
+	if (!bds_wq) {
+		printk(KERN_ERR "Failed to create abyssplugv2_bds_wq workqueue\n");
 		return -EFAULT;
 	}
 	for_each_possible_cpu(i) {
@@ -1032,7 +1032,7 @@ static int __init cpufreq_gov_bds_init(void)
 static void __exit cpufreq_gov_bds_exit(void)
 {
 	cpufreq_unregister_governor(&cpufreq_gov_abyssplugv2);
-	destroy_workqueue(input_wq);
+	destroy_workqueue(bds_wq);
 }
 
 static int set_enable_bds_input_event_param(const char *val, struct kernel_param *kp)
