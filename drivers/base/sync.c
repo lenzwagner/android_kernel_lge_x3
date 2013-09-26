@@ -300,6 +300,12 @@ struct sync_fence *sync_fence_create(const char *name, struct sync_pt *pt)
 	list_add(&pt->pt_list, &fence->pt_list_head);
 	sync_pt_activate(pt);
 
+	/*
+	 * signal the fence in case pt was activated before
+	 * sync_pt_activate(pt) was called
+	 */
+	sync_fence_signal_pt(pt);
+
 	return fence;
 }
 EXPORT_SYMBOL(sync_fence_create);
