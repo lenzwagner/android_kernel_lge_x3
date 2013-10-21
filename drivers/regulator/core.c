@@ -108,6 +108,7 @@ static int _regulator_is_enabled(struct regulator_dev *rdev);
 static int _regulator_disable(struct regulator_dev *rdev);
 static int _regulator_enable(struct regulator_dev *rdev);
 static int _regulator_get_enable_time(struct regulator_dev *rdev);
+static int _regulator_get_disable_time(struct regulator_dev *rdev);
 static int _regulator_get_voltage(struct regulator_dev *rdev);
 static int _regulator_get_current_limit(struct regulator_dev *rdev);
 static unsigned int _regulator_get_mode(struct regulator_dev *rdev);
@@ -495,14 +496,24 @@ static ssize_t regulator_state_set(struct device *dev,
 			udelay(delay);
 		}
 	} else {
+		int delay = 0;
 		if (!rdev->desc->ops->disable) {
 			ret = -EINVAL;
 			goto end;
 		}
+		ret = _regulator_get_disable_time(rdev);
+		if (ret >= 0)
+			delay = ret;
 		ret = rdev->desc->ops->disable(rdev);
 		if (ret < 0) {
 			rdev_warn(rdev, "disable() failed: %d\n", ret);
 			goto end;
+		}
+		if (delay >= 1000) {
+			mdelay(delay / 1000);
+			udelay(delay % 1000);
+		} else if (delay) {
+			udelay(delay);
 		}
 	}
 
@@ -1185,8 +1196,9 @@ static int set_machine_constraints(struct regulator_dev *rdev,
 			if (ret >= 1000) {
 				mdelay(ret / 1000);
 				udelay(ret % 1000);
-			} else
+			} else {
 				udelay(ret);
+			}
 		}
 	}
 
@@ -1195,6 +1207,16 @@ static int set_machine_constraints(struct regulator_dev *rdev,
 		if (ret < 0) {
 			rdev_err(rdev, "failed to disable\n");
 			goto out;
+		}
+
+		ret = _regulator_get_disable_time(rdev);
+		if (ret > 0) {
+			if (ret >= 1000) {
+				mdelay(ret / 1000);
+				udelay(ret % 1000);
+			} else {
+				udelay(ret);
+			}
 		}
 	}
 
@@ -1414,6 +1436,13 @@ static int _regulator_get_enable_time(struct regulator_dev *rdev)
 	if (!rdev->desc->ops->enable_time)
 		return rdev->desc->enable_time;
 	return rdev->desc->ops->enable_time(rdev);
+}
+
+static int _regulator_get_disable_time(struct regulator_dev *rdev)
+{
+	if (rdev->constraints && rdev->constraints->disable_time)
+		return rdev->constraints->disable_time;
+	return rdev->desc->disable_time;
 }
 
 static struct regulator_dev *regulator_dev_lookup(struct device *dev,
@@ -1925,7 +1954,15 @@ EXPORT_SYMBOL_GPL(regulator_enable);
 
 static int _regulator_do_disable(struct regulator_dev *rdev)
 {
-	int ret;
+	int ret, delay;
+
+	ret = _regulator_get_disable_time(rdev);
+	if (ret >= 0) {
+		delay = ret;
+	} else {
+		rdev_warn(rdev, "disable_time() failed: %d\n", ret);
+		delay = 0;
+	}
 
 	trace_regulator_disable(rdev_get_name(rdev));
 
@@ -1942,6 +1979,13 @@ static int _regulator_do_disable(struct regulator_dev *rdev)
 	}
 
 	trace_regulator_disable_complete(rdev_get_name(rdev));
+
+	if (delay >= 1000) {
+		mdelay(delay / 1000);
+		udelay(delay % 1000);
+	} else if (delay) {
+		udelay(delay);
+	}
 
 	_notifier_call_chain(rdev, REGULATOR_EVENT_DISABLE,
 			     NULL);
