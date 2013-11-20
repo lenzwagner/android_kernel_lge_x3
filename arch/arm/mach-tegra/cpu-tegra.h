@@ -35,9 +35,9 @@ unsigned long tegra_cpu_lowest_speed(void);
 unsigned long tegra_cpu_highest_speed(void);
 
 #if defined(CONFIG_TEGRA_AUTO_HOTPLUG) && !defined(CONFIG_ARCH_TEGRA_2x_SOC)
-void tegra_auto_hotplug_governor(unsigned int cpu_freq, bool in_suspend);
 int tegra_auto_hotplug_init(struct mutex *cpulock);
 void tegra_auto_hotplug_exit(void);
+void tegra_auto_hotplug_governor(unsigned int cpu_freq, bool suspend);
 #else
 static inline int tegra_auto_hotplug_init(struct mutex *cpu_lock)
 { return 0; }
@@ -53,16 +53,6 @@ long tegra_get_cur_skin_temp(void);
 #else
 static long inline tegra_get_cur_skin_temp(void)
 { return 0; }
-#endif
-
-#ifdef CONFIG_TEGRA_EDP_LIMITS
-bool tegra_cpu_edp_favor_up(unsigned int n, int mp_overhead);
-bool tegra_cpu_edp_favor_down(unsigned int n, int mp_overhead);
-#else
-static inline bool tegra_cpu_edp_favor_up(unsigned int n, int mp_overhead)
-{ return true; }
-static inline bool tegra_cpu_edp_favor_down(unsigned int n, int mp_overhead)
-{ return false; }
 #endif
 
 /*********************************************************************
