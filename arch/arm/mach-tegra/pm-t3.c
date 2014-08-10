@@ -612,16 +612,9 @@ void tegra_lp0_cpu_mode(bool enter)
 #endif
 #define PMC_DPD_SAMPLE			0x20
 
-static struct tegra_io_dpd tegra_list_io_dpd[] = {
-#if defined(CONFIG_ARCH_TEGRA_3x_SOC) && defined(CONFIG_TEGRA_IO_DPD) && \
-    !defined(CONFIG_MACH_X3)
-	/* sd dpd bits in dpd2 register */
-	IO_DPD_INFO("sdhci-tegra.0",	1,	1), /* SDMMC1 */
-#endif
-	IO_DPD_INFO("sdhci-tegra.2",	1,	2), /* SDMMC3 */
-	IO_DPD_INFO("sdhci-tegra.3",	1,	3), /* SDMMC4 */
+struct tegra_io_dpd tegra_list_io_dpd[] = {
+/* Empty DPD list - sd dpd entries removed */
 };
-#endif
 
 /* we want to cleanup bootloader io dpd setting in kernel */
 static void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
@@ -629,7 +622,6 @@ static void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
 #ifdef CONFIG_PM_SLEEP
 struct tegra_io_dpd *tegra_io_dpd_get(struct device *dev)
 {
-#ifdef CONFIG_TEGRA_IO_DPD
 	int i;
 	const char *name = dev ? dev_name(dev) : NULL;
 	if (name) {
@@ -642,7 +634,6 @@ struct tegra_io_dpd *tegra_io_dpd_get(struct device *dev)
 	}
 	dev_info(dev, "Error: tegra3 io dpd not supported for %s\n",
 		((name) ? name : "NULL"));
-#endif
 	return NULL;
 }
 
@@ -654,10 +645,8 @@ void tegra_io_dpd_enable(struct tegra_io_dpd *hnd)
 	unsigned int dpd_status;
 	unsigned int dpd_enable_lsb;
 
-	if ((!hnd)) {
-		pr_warn("SD IO DPD handle NULL in %s\n", __func__);
+	if ((!hnd))
 		return;
-	}
 	spin_lock(&tegra_io_dpd_lock);
 	dpd_enable_lsb = (hnd->io_dpd_reg_index) ? APBDEV_DPD2_ENABLE_LSB :
 						APBDEV_DPD_ENABLE_LSB;
@@ -669,12 +658,9 @@ void tegra_io_dpd_enable(struct tegra_io_dpd *hnd)
 	udelay(1);
 	dpd_status = readl(pmc + (APBDEV_PMC_IO_DPD_STATUS_0 +
 					hnd->io_dpd_reg_index * 8));
-	if (!(dpd_status & (1 << hnd->io_dpd_bit))) {
-#if !defined(CONFIG_TEGRA_FPGA_PLATFORM)
+	if (!(dpd_status & (1 << hnd->io_dpd_bit)))
 		pr_info("Error: dpd%d enable failed, status=%#x\n",
 		(hnd->io_dpd_reg_index + 1), dpd_status);
-#endif
-	}
 	/* Sample register must be reset before next sample operation */
 	writel(0x0, pmc + PMC_DPD_SAMPLE);
 	spin_unlock(&tegra_io_dpd_lock);
@@ -687,10 +673,8 @@ void tegra_io_dpd_disable(struct tegra_io_dpd *hnd)
 	unsigned int dpd_status;
 	unsigned int dpd_enable_lsb;
 
-	if ((!hnd)) {
-		pr_warn("SD IO DPD handle NULL in %s\n", __func__);
+	if ((!hnd))
 		return;
-	}
 	spin_lock(&tegra_io_dpd_lock);
 	dpd_enable_lsb = (hnd->io_dpd_reg_index) ? APBDEV_DPD2_ENABLE_LSB :
 						APBDEV_DPD_ENABLE_LSB;
@@ -699,12 +683,9 @@ void tegra_io_dpd_disable(struct tegra_io_dpd *hnd)
 					hnd->io_dpd_reg_index * 8));
 	dpd_status = readl(pmc + (APBDEV_PMC_IO_DPD_STATUS_0 +
 					hnd->io_dpd_reg_index * 8));
-	if (dpd_status & (1 << hnd->io_dpd_bit)) {
-#if !defined(CONFIG_TEGRA_FPGA_PLATFORM)
+	if (dpd_status & (1 << hnd->io_dpd_bit))
 		pr_info("Error: dpd%d disable failed, status=%#x\n",
 		(hnd->io_dpd_reg_index + 1), dpd_status);
-#endif
-	}
 	spin_unlock(&tegra_io_dpd_lock);
 	return;
 }
