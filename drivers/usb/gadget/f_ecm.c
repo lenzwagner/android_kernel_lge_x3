@@ -756,7 +756,7 @@ static void ecm_disable(struct usb_function *f)
 		ecm->notify->desc = NULL;
 	}
 }
-//                                                  
+#if 0
 static void ecm_suspend(struct usb_function *f)
 {
 	printk( "ecm ecm_suspend\n");
@@ -768,7 +768,7 @@ static void ecm_resume(struct usb_function *f)
 	printk( "ecm ecm_resume\n");
 
 }
-//                                            
+#endif                                            
 
 /*-------------------------------------------------------------------------*/
 

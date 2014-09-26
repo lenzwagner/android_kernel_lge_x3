@@ -985,7 +985,9 @@ static struct android_usb_function audio_source_function = {
 static struct android_usb_function *supported_functions[] = {
 	&acm_function,
 	&serial_function,
+#if 0 
 	&ecm_function,
+#endif
 	&mass_storage_function,
 #ifdef CONFIG_USB_SUPPORT_LGE_ANDROID_AUTORUN //                                                                    
 	&cdrom_storage_function,

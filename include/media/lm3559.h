@@ -20,8 +20,8 @@ struct lm3559_param {
 	//void *p_value;
 };
 
-#define LM3559_IOCTL_P0WER_CONT   _IOW('o', 13, int)
-#define LM3559_IOCTL_FLASH_TORCH  _IOW('o', 14, struct lm3559_param)
+#define LM3559_IOCTL_POWER_CONT		_IOW('o', 13, int)
+#define LM3559_IOCTL_FLASH_TORCH	_IOW('o', 14, struct lm3559_param)
 
 struct lm3559_platform_data {
 	//unsigned cfg; /* use the NVC_CFG_ defines */
