@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm 3.4.50 Kernel Configuration
+# Linux/arm 3.4.60 Kernel Configuration
 #
 CONFIG_ARM=y
 CONFIG_HAVE_PWM=y
@@ -373,9 +373,7 @@ CONFIG_BACKLIGHT_LM353X=y
 # Bluetooth driver Selection
 #
 CONFIG_BCM4330_RFKILL=y
-CONFIG_BRCM_LPM=y
-CONFIG_BRCM_BT_WAKE=y
-CONFIG_BRCM_HOST_WAKE=y
+# CONFIG_BRCM_LPM is not set
 CONFIG_BD_ADDRESS=y
 CONFIG_MPU_SENSORS_TIMERIRQ=y
 CONFIG_INV_SENSORS=y
