@@ -1850,6 +1850,13 @@ void usleep_range(unsigned long min, unsigned long max)
 }
 EXPORT_SYMBOL(usleep_range);
 
+int usleep_range_interruptible(unsigned long min, unsigned long max)
+{
+ __set_current_state(TASK_INTERRUPTIBLE);
+ return do_usleep_range(min, max);
+}
+EXPORT_SYMBOL(usleep_range_interruptible);
+
 static void do_nsleep(unsigned int nsecs, struct hrtimer_sleeper *sleeper,
 	int sigs)
 {
