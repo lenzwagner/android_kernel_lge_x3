@@ -1,6 +1,0 @@
-BCM4330/BCM4334 DHD 1.28.19.9
-
-DHD version upgrade
-   - Removed workaround code for p2p inteface up
-   - Fixed invalid F2 block size during SoftAP running
-
