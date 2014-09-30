@@ -225,14 +225,14 @@ static int __init tegra_uhsic_init(void)
 {
 	tegra_ehci2_device.dev.platform_data = &tegra_ehci2_hsic_imc_pdata;
 	
-	/* enable baseband gpio(s) */										   
+	/* enable baseband gpio(s) 
 	tegra_gpio_enable(tegra_baseband_power_data.modem.xmm.bb_rst);  
 	tegra_gpio_enable(tegra_baseband_power_data.modem.xmm.bb_on);	   
 	tegra_gpio_enable(tegra_baseband_power_data.modem.xmm.ipc_bb_wake); 
 	tegra_gpio_enable(tegra_baseband_power_data.modem.xmm.ipc_ap_wake); 
 	tegra_gpio_enable(tegra_baseband_power_data.modem.xmm.ipc_hsic_active);
 	tegra_gpio_enable(tegra_baseband_power_data.modem.xmm.ipc_hsic_sus_req);
-
+*/
 	tegra_baseband_power_data.hsic_register =
 					&tegra_usb_hsic_host_register;
 	tegra_baseband_power_data.hsic_unregister =

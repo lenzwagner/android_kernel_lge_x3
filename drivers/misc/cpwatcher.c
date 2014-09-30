@@ -287,8 +287,6 @@ static int cpwatcher_thread(void *pd)
 }
 #endif
 
-extern volatile int time_to_stop; //                                                                                                             
-
 static void cpwatcher_work_func(struct work_struct *wq)
 {
 	struct cpwatcher_dev *dev = cpwatcher;
@@ -314,7 +312,6 @@ static void cpwatcher_work_func(struct work_struct *wq)
         gmt_time.tm_mday, gmt_time.tm_hour - sys_tz.tz_minuteswest / 60,
         gmt_time.tm_min, gmt_time.tm_sec, now.tv_usec);
         
-    time_to_stop = 1; //                                                                                                             
 	if (dev->onoff) {
 
 		cpwatcher_get_status(&status);

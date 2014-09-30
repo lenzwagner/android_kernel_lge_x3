@@ -54,7 +54,7 @@ extern int ssd2825_bridge_disable(void);
 #define x3_hdmi_hpd	TEGRA_GPIO_PN7
 #define TRUE 1
 #define FALSE 0
-static int x3_hddisplay_on = FALSE;
+bool x3_hddisplay_on = FALSE;
 static struct workqueue_struct *bridge_work_queue;
 static struct regulator *x3_hdmi_reg = NULL;
 static struct regulator *x3_hdmi_pll = NULL;
@@ -100,7 +100,7 @@ static tegra_dc_bl_output x3_bl_output_measured = {
 };
 
 static p_tegra_dc_bl_output bl_output;
-#if 0
+//#if 0
 static int x3_backlight_notify(struct device *unused, int brightness)
 {
 	int cur_sd_brightness = atomic_read(&sd_brightness);
@@ -168,7 +168,7 @@ static struct platform_device x3_backlight_device = {
 		.platform_data = &x3_backlight_data,
 	},
 };
-#endif
+//#endif
 
 static bool first_disp_boot = TRUE;
 static int x3_panel_enable(void)
@@ -359,10 +359,10 @@ static struct tegra_dc_out_pin ssd2825_dc_out_pins[] = {
 	},
 };
 
-#if 0
+//#if 0
 static struct tegra_dc_sd_settings x3_sd_settings = {
 	.enable = 1, /* Normal mode operation */
-	.use_auto_pwm = true,
+	.use_auto_pwm = false,
 	.hw_update_delay = 0,
 	.bin_width = -1,
 	.aggressiveness = 1,
@@ -452,7 +452,7 @@ static struct tegra_dc_sd_settings x3_sd_settings = {
 	.sd_brightness = &sd_brightness,
 	.bl_device = &x3_backlight_device,
 };
-#endif
+//#endif
 
 static struct tegra_fb_data x3_fb_data = {
     .win        = 0,
@@ -541,7 +541,7 @@ int ssd2825_bridge_enable_queue(void)
 static struct tegra_dc_out x3_disp1_out = {
 	.align		= TEGRA_DC_ALIGN_MSB,
 	.order		= TEGRA_DC_ORDER_RED_BLUE,
-//                                                                       
+	.sd_settings = &x3_sd_settings,
 	.height 		= 105,//                                              
 	.width		= 59,//                                              
 
@@ -604,11 +604,11 @@ static struct platform_device *x3_gfx_devices[] __initdata = {
 #endif
 };
 
-#if 0
+//#if 0
 static struct platform_device *x3_bl_devices[]  = {
 	&x3_disp1_backlight_device,
 };
-#endif
+//#endif
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 /* put early_suspend/late_resume handlers here for the display in order
