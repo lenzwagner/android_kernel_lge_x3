@@ -580,8 +580,8 @@ static int tegra_pcie_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	return INT_PCIE_INTR;
 }
 
-static struct pci_bus * __devinit tegra_pcie_scan_bus(
-	int nr, struct pci_sys_data *sys)
+static struct pci_bus *tegra_pcie_scan_bus(int nr,
+						  struct pci_sys_data *sys)
 {
 	struct tegra_pcie_port *pp;
 
@@ -610,7 +610,7 @@ static int tegra_pcie_resume(struct device *dev);
 
 /* It enumerates the devices when dock is connected after system boot */
 /* this is similar to pcibios_init_hw in bios32.c */
-static void __devinit tegra_pcie_hotplug_init(void)
+static void tegra_pcie_hotplug_init(void)
 {
 	struct pci_sys_data *sys = NULL;
 	int ret, nr;
@@ -1282,7 +1282,7 @@ static void tegra_pcie_add_port(int index, u32 offset, u32 reset_reg)
 	memset(pp->res, 0, sizeof(pp->res));
 }
 
-static int __devinit tegra_pcie_init(void)
+static int tegra_pcie_init(void)
 {
 	int err = 0;
 	int port;
@@ -1351,7 +1351,7 @@ err_irq:
 	return err;
 }
 
-static int __devinit tegra_pcie_probe(struct platform_device *pdev)
+static int tegra_pcie_probe(struct platform_device *pdev)
 {
 	int ret;
 
