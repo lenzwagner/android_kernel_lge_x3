@@ -583,7 +583,6 @@ static void __init tegra_x3_init(void)
 	x3_kbc_init();
 	//x3_touch_init();
 	x3_gps_init();
-//if (is_tegra_bootmode())
 	x3_baseband_init();
 	x3_panel_init();
 	x3_audio_init();
