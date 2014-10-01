@@ -19,6 +19,7 @@
 
 #ifdef CONFIG_DYNAMIC_FSYNC
 extern bool early_suspend_active;
+extern bool dyn_fsync_active;
 #endif
 
 #define VALID_FLAGS (SYNC_FILE_RANGE_WAIT_BEFORE|SYNC_FILE_RANGE_WRITE| \

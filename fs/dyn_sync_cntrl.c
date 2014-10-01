@@ -1,6 +1,7 @@
 /*
  * Author: Paul Reioux aka Faux123 <reioux@gmail.com>
  *
+ * Copyright 2013 Paul Reioux
  * Copyright 2012 Paul Reioux
  *
  * This software is licensed under the terms of the GNU General Public
@@ -106,7 +107,7 @@ static struct kobject *dyn_fsync_kobj;
 static void dyn_fsync_force_flush(void)
 {
 	/* flush all outstanding buffers */
-	wakeup_flusher_threads(0);
+	wakeup_flusher_threads(0, WB_REASON_SYNC);
 	sync_filesystems(0);
 	sync_filesystems(1);
 }
@@ -180,7 +181,8 @@ static int dyn_fsync_init(void)
 		return -ENOMEM;
         }
 
-	sysfs_result = sysfs_create_group(dyn_fsync_kobj, &dyn_fsync_active_attr_group);
+	sysfs_result = sysfs_create_group(dyn_fsync_kobj,
+			&dyn_fsync_active_attr_group);
 
         if (sysfs_result) {
 		pr_info("%s dyn_fsync sysfs create failed!\n", __FUNCTION__);
@@ -202,4 +204,3 @@ static void dyn_fsync_exit(void)
 
 module_init(dyn_fsync_init);
 module_exit(dyn_fsync_exit);
-
