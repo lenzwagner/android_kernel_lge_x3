@@ -350,8 +350,8 @@ CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 MODFLAGS        = -DMODULE \
                   -mfpu=neon-vfpv4 \
                   -mtune=cortex-a15 \
-		  -fgcse-las \
-		  -fpredictive-commoning \
+				  -fgcse-las \
+				  -fpredictive-commoning \
                   -O3
 
 CFLAGS_MODULE   = $(MODFLAGS)
@@ -359,8 +359,8 @@ AFLAGS_MODULE   = $(MODFLAGS)
 LDFLAGS_MODULE  = -T $(srctree)/scripts/module-common.lds
 CFLAGS_KERNEL   = -mfpu=neon-vfpv4 \
                   -mtune=cortex-a15 \
-		  -fgcse-las \
-		  -fpredictive-commoning \
+				  -fgcse-las \
+				  -fpredictive-commoning \
                   -O2
 
 ifeq ($(ENABLE_GRAPHITE),true)

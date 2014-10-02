@@ -595,7 +595,7 @@ static struct pci_bus *tegra_pcie_scan_bus(int nr,
 				 &sys->resources);
 }
 
-static struct hw_pci tegra_pcie_hw __initdata = {
+static struct hw_pci tegra_pcie_hw = {
 	.nr_controllers	= MAX_PCIE_SUPPORTED_PORTS,
 	.preinit	= tegra_pcie_preinit,
 	.setup		= tegra_pcie_setup,
@@ -1404,7 +1404,7 @@ static void tegra_pcie_set_irq(struct pci_bus *bus)
 	}
 }
 
-static int __ref tegra_pcie_resume(struct device *dev)
+static int tegra_pcie_resume(struct device *dev)
 {
 	int ret = 0;
 	struct pci_bus *bus = NULL;
