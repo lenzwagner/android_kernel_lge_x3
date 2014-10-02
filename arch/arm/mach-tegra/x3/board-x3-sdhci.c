@@ -28,21 +28,28 @@
 #include <mach/irqs.h>
 #include <mach/iomap.h>
 #include <mach/sdhci.h>
+#include <mach/io_dpd.h>
 
 #include "../gpio-names.h"
 #include "../board.h"
 #include <lge/board-x3.h>
-#include "../../../include/asm/hw_irq.h"
+#include "../../include/asm/hw_irq.h" //                                                   
 
 #ifdef CONFIG_DHD_USE_STATIC_BUF
 #include <linux/skbuff.h>
 #include <linux/wlan_plat.h>
 #endif
 
+#include "LG_CC_Table.h"
+
+//                                                         
 #define X3_WLAN_RST	TEGRA_GPIO_PV3
 #define X3_WLAN_WOW	TEGRA_GPIO_PU6
 #define X3_SD_CD TEGRA_GPIO_PW5
 #define X3_SD_WP TEGRA_GPIO_PT3
+
+#define NV_WIFI_MACADDR "/data/misc/wifi/config_mac"
+#define ETHER_ADDR_LEN 6
 
 static void (*wifi_status_cb)(int card_present, void *dev_id);
 static void *wifi_status_cb_devid;
@@ -51,6 +58,8 @@ static int x3_wifi_status_register(void (*callback)(int , void *), void *);
 static int x3_wifi_reset(int on);
 static int x3_wifi_power(int on);
 static int x3_wifi_set_carddetect(int val);
+static int x3_wifi_get_mac_addr(unsigned char *buf);
+static void * x3_wifi_get_country_code(char *ccode);
 
 #ifdef CONFIG_DHD_USE_STATIC_BUF
 #define WLAN_STATIC_SCAN_BUF0		5
@@ -162,6 +171,8 @@ static struct wifi_platform_data x3_wifi_control = {
 	.set_power      = x3_wifi_power,
 	.set_reset      = x3_wifi_reset,
 	.set_carddetect = x3_wifi_set_carddetect,
+	.get_mac_addr   = x3_wifi_get_mac_addr,
+	.get_country_code = x3_wifi_get_country_code,
 #if defined(CONFIG_DHD_USE_STATIC_BUF)
 	.mem_prealloc   = x3_wifi_mem_prealloc,
 #endif
@@ -335,8 +346,191 @@ static int x3_wifi_set_carddetect(int val)
 	return 0;
 }
 
+
+
+void init_mac(char *buf)
+{
+	buf[0] = 0x00;
+	buf[1] = 0x00;
+	buf[2] = 0x00;
+	buf[3] = 0x00;
+	buf[4] = 0x00;
+	buf[5] = 0x00;
+}
+
+static unsigned int util_hex2num(char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+static int util_ascii_to_hex(char* keystr, unsigned int keystrlen, char* dst)
+{
+	#define TEMP_BUF_LEN 10
+	char temp_buf[TEMP_BUF_LEN] = {0,};
+	unsigned int hex_len = keystrlen;
+	unsigned int i1 = 0, i2 = 0, num1, num2;
+
+	if (!keystr) {
+		return -1;
+	}
+
+	if (hex_len > (TEMP_BUF_LEN*2)) {
+		printk(KERN_INFO "keystrlen is too long %u\n", keystrlen);
+		return -1;
+	}
+
+	while (hex_len)
+	{
+		num1 = util_hex2num(keystr[i1++]);
+		num2 = util_hex2num(keystr[i1++]);
+		if (num1 < 0 || num2 < 0)
+		{
+			// error
+			return -1;
+		}
+		num1 <<= 4;
+		temp_buf[i2++] = num1 | num2;
+		hex_len -= 2;
+	}
+
+	memcpy(dst, temp_buf, keystrlen/2);
+	return keystrlen/2;
+}
+
+static bool check_nvmac_is_valid(char* nvmac)
+{
+	bool ret = true;
+	const char init_val[3][ETHER_ADDR_LEN] = {
+		{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+		{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+		{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+	};
+
+	if (!nvmac
+		|| !memcmp(nvmac, init_val[0], ETHER_ADDR_LEN)
+		|| !memcmp(nvmac, init_val[1], ETHER_ADDR_LEN)
+		|| !memcmp(nvmac, init_val[2], ETHER_ADDR_LEN)) {
+		ret = false;
+	}
+	return ret;
+}
+
+static unsigned char mymac[ETHER_ADDR_LEN] = {0,};
+static int x3_wifi_get_mac_addr(unsigned char *buf)
+{
+#if 1
+	int ret = 0;
+	int rdlen;
+
+	char addr_tmp[ETHER_ADDR_LEN*2 + 1] = {0,};		// +1 for NULL
+	mm_segment_t old_fs;
+	struct kstat stat;
+	struct file *fp;	
+
+	init_mac(buf);
+/*
+	if(check_nvmac_is_valid(mymac))
+	{
+		memcpy( buf,mymac, ETHER_ADDR_LEN );
+		return 0;	
+	}
+*/
+	old_fs = get_fs();
+	set_fs(get_ds());
+	if ((ret = vfs_stat(NV_WIFI_MACADDR, &stat))) {
+		set_fs(old_fs);
+		printk(KERN_ERR "%s: Failed to get information (%d)\n", NV_WIFI_MACADDR, ret);
+		return ret;
+	}
+	set_fs(old_fs);
+
+	fp = filp_open(NV_WIFI_MACADDR, O_RDONLY, 0);
+  if (IS_ERR(fp))
+ 	{
+		printk(KERN_ERR "Failed to read file \n");	
+		return ret;
+ 	}
+
+	memset(mymac,0x00,ETHER_ADDR_LEN);
+	
+	rdlen = kernel_read(fp, fp->f_pos, addr_tmp, ETHER_ADDR_LEN*2);
+
+	if (rdlen > 0)
+	{
+		if(util_ascii_to_hex(addr_tmp, ETHER_ADDR_LEN*2, mymac) <= 0)
+		{
+			printk(KERN_ERR "=== convert error ==== \n");		
+		}
+
+		printk(KERN_ERR "get_mac_addr = %x:%x:%x:%x:%x:%x\n",mymac[0],mymac[1],mymac[2],mymac[3],mymac[4],mymac[5]);
+
+		if(check_nvmac_is_valid(mymac))
+		{		
+			memcpy( buf,mymac, ETHER_ADDR_LEN );			
+		}
+	}
+	filp_close((struct file *)fp, NULL);
+	
+	return ret;
+
+#else
+	 buf[0] = 0x00;
+	 buf[1] = 0x90;
+	 buf[2] = 0x4c;
+	 buf[3] = (unsigned char)rand_mac;
+	 buf[4] = (unsigned char)(rand_mac >> 8);
+	 buf[5] = (unsigned char)(rand_mac >> 16);
+#endif
+	return 0;
+}
+
+#define WLC_CNTRY_BUF_SZ	4		/* Country string is 3 bytes + NUL */
+struct cntry_locales_custom {
+	char iso_abbrev[WLC_CNTRY_BUF_SZ];	
+	char custom_locale[WLC_CNTRY_BUF_SZ];	
+	s32 custom_locale_rev;		
+};
+struct cntry_locales_custom cloc_ptr_temp;
+static void * x3_wifi_get_country_code(char *ccode)
+{
+	char ccode_mapped[8] = {0x00,};
+	int result;
+
+	memset(&cloc_ptr_temp,0x00,sizeof(cloc_ptr_temp));
+	result = _getWiFiMappedCode( ccode, ccode_mapped, 8 );
+	printk(KERN_ERR "*** x3 country ccode=%s ccode_mapped=%s result=%d\n",ccode,ccode_mapped,result);
+	
+	//                              
+	if( strchr( ccode_mapped, '/' ) != NULL )
+	{
+		char ccstr[32] = {0,};
+		char* ccptr = ccstr;
+		strcpy( ccstr, ccode_mapped );
+
+		ccptr = strchr( ccstr, '/' );
+		*ccptr++ = '\0';
+		strcpy( cloc_ptr_temp.custom_locale, ccstr );
+		cloc_ptr_temp.custom_locale_rev = (int)simple_strtol( ccptr, NULL, 0 );		
+	}
+	else
+	{
+		strcpy( cloc_ptr_temp.custom_locale, ccode_mapped );
+	}
+
+	printk(KERN_ERR "custom_locale=%s custom_locale=%d\n",cloc_ptr_temp.custom_locale,cloc_ptr_temp.custom_locale_rev);
+	
+	return &cloc_ptr_temp;	
+}
+
 static int x3_wifi_power(int on)
 {
+	struct tegra_io_dpd *sd_dpd;
+
 	pr_debug("%s: %d\n", __func__, on);
 #if 0
 /* does not use dpd for sdmmc */
