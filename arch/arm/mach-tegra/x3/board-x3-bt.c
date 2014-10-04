@@ -91,6 +91,7 @@ void x3_bt_rfkill(void)
 		
 	return;
 }
+extern void bluesleep_setup_uart_port(struct platform_device *uart_dev);
 
 void __init x3_setup_bluesleep(void)
 {
@@ -133,6 +134,8 @@ void __init x3_setup_bluesleep(void)
 		pr_err("unable to add bluesleep device\n");
 		goto err_free_res;
 	}
+
+	bluesleep_setup_uart_port(&tegra_uartc_device);
 	tegra_gpio_enable(TEGRA_GPIO_PS4);
 	tegra_gpio_enable(TEGRA_GPIO_PS3);
 
