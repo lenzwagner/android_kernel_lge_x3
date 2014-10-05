@@ -436,7 +436,7 @@ static u8 smp_cmd_security_req(struct l2cap_conn *conn, struct sk_buff *skb)
 
 	BT_DBG("conn %p", conn);
 
-	if (test_bit(HCI_CONN_ENCRYPT_PEND, &hcon->pend))
+	if (test_bit(HCI_CONN_ENCRYPT_PEND, &hcon->flags))
 		return 0;
 
 	skb_pull(skb, sizeof(*rp));
@@ -452,7 +452,7 @@ static u8 smp_cmd_security_req(struct l2cap_conn *conn, struct sk_buff *skb)
 	mod_timer(&conn->security_timer, jiffies +
 					msecs_to_jiffies(SMP_TIMEOUT));
 
-	set_bit(HCI_CONN_ENCRYPT_PEND, &hcon->pend);
+	set_bit(HCI_CONN_ENCRYPT_PEND, &hcon->flags);
 
 	return 0;
 }
@@ -470,7 +470,7 @@ int smp_conn_security(struct l2cap_conn *conn, __u8 sec_level)
 	if (IS_ERR(hcon->hdev->tfm))
 		return 1;
 
-	if (test_bit(HCI_CONN_ENCRYPT_PEND, &hcon->pend))
+	if (test_bit(HCI_CONN_ENCRYPT_PEND, &hcon->flags))
 		return 0;
 
 	if (sec_level == BT_SECURITY_LOW)
@@ -513,7 +513,7 @@ int smp_conn_security(struct l2cap_conn *conn, __u8 sec_level)
 
 done:
 	hcon->pending_sec_level = sec_level;
-	set_bit(HCI_CONN_ENCRYPT_PEND, &hcon->pend);
+	set_bit(HCI_CONN_ENCRYPT_PEND, &hcon->flags);
 
 	return 0;
 }

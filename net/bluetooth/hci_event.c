@@ -1136,7 +1136,7 @@ static void hci_cs_remote_name_req(struct hci_dev *hdev, __u8 status)
 	if (!hci_outgoing_auth_needed(hdev, conn))
 		goto unlock;
 
-	if (!test_and_set_bit(HCI_CONN_AUTH_PEND, &conn->pend)) {
+	if (!test_and_set_bit(HCI_CONN_AUTH_PEND, &conn->flags)) {
 		struct hci_cp_auth_requested cp;
 		cp.handle = __cpu_to_le16(conn->handle);
 		hci_send_cmd(hdev, HCI_OP_AUTH_REQUESTED, sizeof(cp), &cp);
@@ -1253,9 +1253,9 @@ static void hci_cs_sniff_mode(struct hci_dev *hdev, __u8 status)
 
 	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(cp->handle));
 	if (conn) {
-		clear_bit(HCI_CONN_MODE_CHANGE_PEND, &conn->pend);
+		clear_bit(HCI_CONN_MODE_CHANGE_PEND, &conn->flags);
 
-		if (test_and_clear_bit(HCI_CONN_SCO_SETUP_PEND, &conn->pend))
+		if (test_and_clear_bit(HCI_CONN_SCO_SETUP_PEND, &conn->flags))
 			hci_sco_setup(conn, status);
 	}
 
@@ -1280,9 +1280,9 @@ static void hci_cs_exit_sniff_mode(struct hci_dev *hdev, __u8 status)
 
 	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(cp->handle));
 	if (conn) {
-		clear_bit(HCI_CONN_MODE_CHANGE_PEND, &conn->pend);
+		clear_bit(HCI_CONN_MODE_CHANGE_PEND, &conn->flags);
 
-		if (test_and_clear_bit(HCI_CONN_SCO_SETUP_PEND, &conn->pend))
+		if (test_and_clear_bit(HCI_CONN_SCO_SETUP_PEND, &conn->flags))
 			hci_sco_setup(conn, status);
 	}
 
@@ -1592,7 +1592,7 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 
 	if (!ev->status) {
 		if (!(conn->ssp_mode > 0 && hdev->ssp_mode > 0) &&
-				test_bit(HCI_CONN_REAUTH_PEND,	&conn->pend)) {
+				test_bit(HCI_CONN_REAUTH_PEND,	&conn->flags)) {
 			BT_INFO("re-auth of legacy device is not possible.");
 		} else {
 			conn->link_mode |= HCI_LM_AUTH;
@@ -1602,8 +1602,8 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 		mgmt_auth_failed(hdev->id, &conn->dst, ev->status);
 	}
 
-	clear_bit(HCI_CONN_AUTH_PEND, &conn->pend);
-	clear_bit(HCI_CONN_REAUTH_PEND, &conn->pend);
+	clear_bit(HCI_CONN_AUTH_PEND, &conn->flags);
+	clear_bit(HCI_CONN_REAUTH_PEND, &conn->flags);
 
 	if (conn->state == BT_CONFIG) {
 		if (!ev->status && hdev->ssp_mode > 0 && conn->ssp_mode > 0) {
@@ -1625,7 +1625,7 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 		hci_conn_put(conn);
 	}
 
-	if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend)) {
+	if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->flags)) {
 		if (!ev->status) {
 			struct hci_cp_set_conn_encrypt cp;
 			cp.handle  = ev->handle;
@@ -1633,7 +1633,7 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 			hci_send_cmd(hdev, HCI_OP_SET_CONN_ENCRYPT, sizeof(cp),
 									&cp);
 		} else {
-			clear_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend);
+			clear_bit(HCI_CONN_ENCRYPT_PEND, &conn->flags);
 			hci_encrypt_cfm(conn, ev->status, 0x00);
 		}
 	}
@@ -1663,7 +1663,7 @@ static inline void hci_remote_name_evt(struct hci_dev *hdev, struct sk_buff *skb
 	if (!hci_outgoing_auth_needed(hdev, conn))
 		goto unlock;
 
-	if (!test_and_set_bit(HCI_CONN_AUTH_PEND, &conn->pend)) {
+	if (!test_and_set_bit(HCI_CONN_AUTH_PEND, &conn->flags)) {
 		struct hci_cp_auth_requested cp;
 		cp.handle = __cpu_to_le16(conn->handle);
 		hci_send_cmd(hdev, HCI_OP_AUTH_REQUESTED, sizeof(cp), &cp);
@@ -1694,7 +1694,7 @@ static inline void hci_encrypt_change_evt(struct hci_dev *hdev, struct sk_buff *
 				conn->link_mode &= ~HCI_LM_ENCRYPT;
 		}
 
-		clear_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend);
+		clear_bit(HCI_CONN_ENCRYPT_PEND, &conn->flags);
 
 		if (conn->state == BT_CONFIG) {
 			if (!ev->status)
@@ -1723,7 +1723,7 @@ static inline void hci_change_link_key_complete_evt(struct hci_dev *hdev, struct
 		if (!ev->status)
 			conn->link_mode |= HCI_LM_SECURE;
 
-		clear_bit(HCI_CONN_AUTH_PEND, &conn->pend);
+		clear_bit(HCI_CONN_AUTH_PEND, &conn->flags);
 
 		hci_key_change_cfm(conn, ev->status);
 	}
@@ -2084,7 +2084,7 @@ static inline void hci_role_change_evt(struct hci_dev *hdev, struct sk_buff *skb
 				conn->link_mode |= HCI_LM_MASTER;
 		}
 
-		clear_bit(HCI_CONN_RSWITCH_PEND, &conn->pend);
+		clear_bit(HCI_CONN_RSWITCH_PEND, &conn->flags);
 
 		hci_role_switch_cfm(conn, ev->status, ev->role);
 	}
@@ -2161,14 +2161,14 @@ static inline void hci_mode_change_evt(struct hci_dev *hdev, struct sk_buff *skb
 		conn->mode = ev->mode;
 		conn->interval = __le16_to_cpu(ev->interval);
 
-		if (!test_and_clear_bit(HCI_CONN_MODE_CHANGE_PEND, &conn->pend)) {
+		if (!test_and_clear_bit(HCI_CONN_MODE_CHANGE_PEND, &conn->flags)) {
 			if (conn->mode == HCI_CM_ACTIVE)
 				conn->power_save = 1;
 			else
 				conn->power_save = 0;
 		}
 
-		if (test_and_clear_bit(HCI_CONN_SCO_SETUP_PEND, &conn->pend))
+		if (test_and_clear_bit(HCI_CONN_SCO_SETUP_PEND, &conn->flags))
 			hci_sco_setup(conn, ev->status);
 	}
 
@@ -2692,8 +2692,11 @@ static inline void hci_user_confirm_request_evt(struct hci_dev *hdev,
 
 		/* If we're not the initiators request authorization to
 		 * proceed from user space (mgmt_user_confirm with
-		 * confirm_hint set to 1). */
-		if (!test_bit(HCI_CONN_AUTH_PEND, &conn->pend)) {
+		 * confirm_hint set to 1). The exception is if neither
+		 * side had MITM in which case we do auto-accept.
+		 */
+		if (!test_bit(HCI_CONN_AUTH_PEND, &conn->flags) &&
+		    (loc_mitm || rem_mitm)) {
 			BT_DBG("Confirming auto-accept as acceptor");
 			confirm_hint = 1;
 			goto confirm;
@@ -2739,7 +2742,7 @@ static inline void hci_simple_pair_complete_evt(struct hci_dev *hdev, struct sk_
 	 * initiated the authentication. A traditional auth_complete
 	 * event gets always produced as initiator and is also mapped to
 	 * the mgmt_auth_failed event */
-	if (!test_bit(HCI_CONN_AUTH_PEND, &conn->pend) && ev->status != 0)
+	if (!test_bit(HCI_CONN_AUTH_PEND, &conn->flags) && ev->status != 0)
 		mgmt_auth_failed(hdev->id, &conn->dst, ev->status);
 
 	hci_conn_put(conn);

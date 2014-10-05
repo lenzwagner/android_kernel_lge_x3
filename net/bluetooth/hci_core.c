@@ -1514,7 +1514,7 @@ int hci_register_dev(struct hci_dev *hdev)
 						(unsigned long) hdev);
 
 	INIT_WORK(&hdev->power_on, hci_power_on);
-	INIT_WORK(&hdev->power_off, hci_power_off);
+	INIT_DELAYED_WORK(&hdev->power_off, hci_power_off);
 	setup_timer(&hdev->off_timer, hci_auto_off, (unsigned long) hdev);
 
 	memset(&hdev->stat, 0, sizeof(struct hci_dev_stats));

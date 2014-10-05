@@ -174,7 +174,7 @@ struct hci_dev {
 	struct workqueue_struct	*workqueue;
 
 	struct work_struct	power_on;
-	struct work_struct	power_off;
+	struct delayed_work	power_off;
 	struct timer_list	off_timer;
 
 	struct timer_list	cmd_timer;
@@ -267,7 +267,7 @@ struct hci_conn {
 	__u8		io_capability;
 	__u8		power_save;
 	__u16		disc_timeout;
-	unsigned long	pend;
+	unsigned long	flags;
 
 	__u8		remote_cap;
 	__u8		remote_oob;
@@ -696,7 +696,7 @@ static inline void hci_proto_auth_cfm(struct hci_conn *conn, __u8 status)
 	register struct hci_proto *hp;
 	__u8 encrypt;
 
-	if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend))
+	if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->flags))
 		return;
 
 	encrypt = (conn->link_mode & HCI_LM_ENCRYPT) ? 0x01 : 0x00;
@@ -752,7 +752,7 @@ static inline void hci_auth_cfm(struct hci_conn *conn, __u8 status)
 
 	hci_proto_auth_cfm(conn, status);
 
-	if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend))
+	if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->flags))
 		return;
 
 	encrypt = (conn->link_mode & HCI_LM_ENCRYPT) ? 0x01 : 0x00;
@@ -897,7 +897,6 @@ void hci_le_conn_update(struct hci_conn *conn, u16 min, u16 max,
 					u16 latency, u16 to_multiplier);
 void hci_le_start_enc(struct hci_conn *conn, __le16 ediv, __u8 rand[8],
 							__u8 ltk[16]);
-void hci_le_ltk_reply(struct hci_conn *conn, u8 ltk[16]);
 void hci_le_ltk_neg_reply(struct hci_conn *conn);
 
 #endif /* __HCI_CORE_H */
