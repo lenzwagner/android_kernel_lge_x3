@@ -26,12 +26,24 @@
 #include <linux/uaccess.h>
 #include <linux/module.h>
 
+#ifdef CONFIG_MACH_X3
+#include <linux/notifier.h>
+#include <linux/reboot.h>
+#endif
+
 #include <linux/mfd/max77663-core.h>
+
+#ifdef CONFIG_MACH_X3
+#include "../../arch/arm/mach-tegra/x3/include/lge/board-x3.h"
+#endif
 
 /* RTC i2c slave address */
 #define MAX77663_RTC_I2C_ADDR		0x48
 
 /* Registers */
+#ifdef CONFIG_MACH_X3
+#define MAX77663_REG_32KHZ_OSC		0x03
+#endif
 #define MAX77663_REG_IRQ_TOP		0x05
 #define MAX77663_REG_LBT_IRQ		0x06
 #define MAX77663_REG_SD_IRQ		0x07
@@ -46,6 +58,9 @@
 #define MAX77663_REG_LDOX_IRQ_MASK	0x10
 #define MAX77663_REG_LDO8_IRQ_MASK	0x11
 #define MAX77663_REG_ONOFF_IRQ_MASK	0x12
+#ifdef CONFIG_MACH_X3
+#define MAX77663_REG_ONOFF_STAT		0x15
+#endif
 #define MAX77663_REG_GPIO_CTRL0		0x36
 #define MAX77663_REG_GPIO_CTRL1		0x37
 #define MAX77663_REG_GPIO_CTRL2		0x38
@@ -115,20 +130,42 @@
 #define GPIO_DBNC_16MS			2
 #define GPIO_DBNC_32MS			3
 
+#ifdef CONFIG_MACH_X3
+#define OSC_32KHZ_LOAD_12PF		(0b00 << 4)
+#define OSC_32KHZ_LOAD_22PF		(0b01 << 4)
+#define OSC_32KHZ_LOAD_NO		(0b10 << 4)
+#define OSC_32KHZ_LOAD_10PF		(0b11 << 4)
+
+#define OSC_32KHZ_LOAD_MASK		(1 << 5 | 1 << 4)
+
+#define	ONOFF_MRT_MASK_2S		(0b000 << 3)
+#define	ONOFF_MRT_MASK_3S		(0b001 << 3)
+#define	ONOFF_MRT_MASK_4S		(0b010 << 3)
+#define	ONOFF_MRT_MASK_5S		(0b011 << 3)
+#define	ONOFF_MRT_MASK_6S		(0b100 << 3)
+#define	ONOFF_MRT_MASK_8S		(0b101 << 3)
+#define	ONOFF_MRT_MASK_10S		(0b110 << 3)
+#define	ONOFF_MRT_MASK_12S		(0b111 << 3)
+#endif
+
 #define ONOFF_SFT_RST_MASK		(1 << 7)
+#ifdef CONFIG_MACH_X3
+#define ONOFF_MRT_MASK			(1 << 5 | 1 << 4 | 1 << 3)
+#endif
 #define ONOFF_SLPEN_MASK		(1 << 2)
 #define ONOFF_PWR_OFF_MASK		(1 << 1)
 
 #define ONOFF_SLP_LPM_MASK		(1 << 5)
 
-#define ONOFF_IRQ_EN0_RISING		(1 << 3)
-
 #ifdef CONFIG_MACH_X3
-#define ONOFF_MRT_MASK_10S		(0b110 << 3)
-#define ONOFF_MRT_MASK			(1 << 5 | 1 << 4 | 1 << 3)
 #define ONOFF_SFT_PWR_OFF_MASK		(1 << 1)
 #define ONOFF_SFT_RST_WK_MASK		(1 << 7)
+
+#define ONOFF_STAT_EN0_MASK		(1 << 2)
+#define ONOFF_STAT_ACOK_MASK		(1 << 1)
+#define ONOFF_STAT_LID_MASK		(1 << 0)
 #endif
+#define ONOFF_IRQ_EN0_RISING		(1 << 3)
 
 enum {
 	CACHE_IRQ_LBT,
@@ -321,7 +358,7 @@ static inline int max77663_i2c_read(struct max77663_chip *chip, u8 addr,
 
 	if (is_rtc)
 		regmap = chip->regmap_rtc;
-	ret = regmap_bulk_read(regmap, addr, dest, bytes);
+		ret = regmap_bulk_read(regmap, addr, dest, bytes);
 	if (ret < 0) {
 		dev_err(chip->dev, "%s() failed, e %d\n", __func__, ret);
 		return ret;
@@ -376,52 +413,64 @@ int max77663_set_bits(struct device *dev, u8 addr, u8 mask, u8 value,
 EXPORT_SYMBOL(max77663_set_bits);
 
 #ifdef CONFIG_MACH_X3
-int max77663_get_bits(struct device *dev, u8 addr, u8 value, bool is_rtc)
+int max77663_get_bits(struct device *dev, u8 addr, u8 mask,
+		      bool is_rtc)
 {
 	struct max77663_chip *chip = dev_get_drvdata(dev);
-	int ret, regval;
-	struct regmap *regmap = chip->regmap_power;
-
-	if (is_rtc)
-		regmap = chip->regmap_rtc;
+//	struct i2c_client *client = NULL;
+	u8 tmp = 0;
+	int ret = 0;
 
 	mutex_lock(&chip->io_lock);
-	ret = regmap_read(regmap, addr, &regval);
-	mutex_unlock(&chip->io_lock);
-
-	if (ret != 0)
-		return ret;
-
-	return regval;
-}
+#if 0
+	if (!is_rtc)
+		client = chip->i2c_power;
+	else
+		client = chip->i2c_rtc;
 #endif
 
+	ret = max77663_i2c_read(chip, addr, &tmp, 1, is_rtc);
+	if (ret == 0) {
+		ret = tmp & mask;
+	}
+	mutex_unlock(&chip->io_lock);
+	return ret;
+}
+EXPORT_SYMBOL(max77663_get_bits);
+
+int max77663_power_off(void)
+#else
 static void max77663_power_off(void)
+#endif
 {
 	struct max77663_chip *chip = max77663_chip;
 
 	if (!chip)
-		return;
-
 #ifdef CONFIG_MACH_X3
-#define MAX77663_REG_ONOFF_STAT	0x15
-#define ONOFF_STAT_ACOK_MASK	(1 << 1)
-	if (max77663_get_bits(chip->dev, MAX77663_REG_ONOFF_STAT, ONOFF_STAT_ACOK_MASK, 0))
-		max77663_power_rst_wkup(1);
-	else
-#endif
-	{
-		dev_info(chip->dev, "%s: Global shutdown\n", __func__);
-		max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG1,
-#ifdef CONFIG_MACH_X3
-				  ONOFF_SFT_PWR_OFF_MASK, ONOFF_SFT_PWR_OFF_MASK, 0);
+		return -EINVAL;
 #else
-				  ONOFF_SFT_RST_MASK, ONOFF_SFT_RST_MASK, 0);
+		return;
 #endif
-	}
-}
 
 #ifdef CONFIG_MACH_X3
+	if (max77663_get_bits(chip->dev, MAX77663_REG_ONOFF_STAT, ONOFF_STAT_ACOK_MASK, 0)) {
+		max77663_power_rst_wkup(1);
+		//arm_machine_restart('h', NULL);
+		return 0;
+	} else {
+		dev_info(chip->dev, "%s: Global shutdown\n", __func__);
+		return max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG1,
+					 ONOFF_SFT_PWR_OFF_MASK, ONOFF_SFT_PWR_OFF_MASK, 0);
+	}
+#else
+	dev_info(chip->dev, "%s: Global shutdown\n", __func__);
+	max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG1,
+			  ONOFF_SFT_RST_MASK, ONOFF_SFT_RST_MASK, 0);
+#endif
+}
+#ifdef CONFIG_MACH_X3
+EXPORT_SYMBOL(max77663_power_off);
+
 #define MAX77663_RTC_UPDATE0		0x04
 #define MAX77663_RTC_ALARM_SEC2		0x15
 int max77663_set_ScratchRegister(u8 bit)
@@ -436,8 +485,22 @@ int max77663_set_ScratchRegister(u8 bit)
 
 	max77663_write(chip->dev, MAX77663_RTC_UPDATE0, &val, 1, 1);
 	mdelay(15);
+
+	return 0;
 }
 EXPORT_SYMBOL(max77663_set_ScratchRegister);
+
+int max77663_get_acok_stat(void)
+{
+	struct max77663_chip *chip = max77663_chip;
+
+	if (!chip)
+		return -EINVAL;
+
+	return max77663_get_bits(chip->dev, MAX77663_REG_ONOFF_STAT,
+				ONOFF_STAT_ACOK_MASK, 0);
+}
+EXPORT_SYMBOL(max77663_get_acok_stat);
 
 int max77663_power_rst_wkup(int on)
 {
@@ -467,7 +530,34 @@ static int max77663_sleep(struct max77663_chip *chip, bool on)
 {
 	int ret = 0;
 
-#ifndef CONFIG_MACH_X3
+#ifdef CONFIG_MACH_X3
+#if defined(CONFIG_MFD_MAX77663_LPM)
+	if (chip->pdata->flags & SLP_LPM_ENABLE) {
+	/* Put the power rails into Low-Power mode during sleep mode,
+	 * if the power rail's power mode is GLPM. */
+		ret = max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG2,
+			ONOFF_SLP_LPM_MASK, ONOFF_SLP_LPM_MASK, 0);
+		if (ret < 0)
+			return ret;
+	}
+ 	/* Enable sleep that AP can be placed into sleep mode
+ 	 * by pulling EN1 low */
+	return max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG1,
+				ONOFF_SLPEN_MASK, on ? ONOFF_SLPEN_MASK : 0, 0);
+#else
+	/* Enable sleep that AP can be placed into sleep mode
+	 * by pulling EN1 low */
+	ret = max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG1,
+					ONOFF_SLPEN_MASK, on ? ONOFF_SLPEN_MASK : 0, 0);
+
+	if (ret < 0)
+		dev_err(chip->dev,
+			"sleep_enable: Failed to set on/off config1 (%d) Sleep\n",
+			MAX77663_REG_ONOFF_CFG1);
+
+	return ret;
+#endif
+#else
 	if (chip->pdata->flags & SLP_LPM_ENABLE) {
 		/* Put the power rails into Low-Power mode during sleep mode,
 		 * if the power rail's power mode is GLPM. */
@@ -477,13 +567,29 @@ static int max77663_sleep(struct max77663_chip *chip, bool on)
 		if (ret < 0)
 			return ret;
 	}
-#endif
+
 	/* Enable sleep that AP can be placed into sleep mode
 	 * by pulling EN1 low */
 	return max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG1,
 				 ONOFF_SLPEN_MASK,
 				 on ? ONOFF_SLPEN_MASK : 0, 0);
+#endif /* CONFIG_MACH_X3 */
 }
+
+#ifdef CONFIG_MACH_X3
+static int max77663_set_manual_resettime(struct max77663_chip *chip)
+{
+	int ret;
+
+	ret = max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG1,
+					ONOFF_MRT_MASK, ONOFF_MRT_MASK_10S, 0);
+	if (ret < 0)
+		dev_err(chip->dev,
+			"sleep_enable: Failed to set manual reset time config1\n");
+
+	return ret;
+}
+#endif
 
 static inline int max77663_cache_write(struct device *dev, u8 addr, u8 mask,
 				       u8 val, u8 *cache)
@@ -622,6 +728,10 @@ static irqreturn_t max77663_irq(int irq, void *data)
 		dev_err(chip->dev, "irq: Failed to get irq top status\n");
 		return IRQ_NONE;
 	}
+
+#ifdef CONFIG_MACH_X3
+	printk("max77663_irq: irq_mask=0x%02x \n",irq_top);
+#endif
 
 	if (irq_top & IRQ_TOP_GLBL_MASK) {
 		ret = max77663_do_irq(chip, MAX77663_REG_LBT_IRQ, IRQ_LBT_BASE,
@@ -882,6 +992,86 @@ static void max77663_debugfs_exit(struct max77663_chip *chip)
 {
 	debugfs_remove(max77663_dentry_regs);
 }
+
+#if 0 //def CONFIG_MACH_X3
+static void max77663_dumpRegister(struct max77663_chip *chip, char *label,
+				      u8 *addrs, int num_addrs, int is_rtc)
+{
+	int i;
+	u8 val;
+	int ret = 0;
+
+	printk("%s\n", label);
+
+	for (i = 0; i < num_addrs; i++) {
+		printk("0x%02x: ", addrs[i]);
+
+		ret = max77663_read(chip->dev, addrs[i], &val, 1, is_rtc);
+		if (ret == 0)
+			printk("0x%02x\n", val);
+		else
+			printk("<read fail: %d>\n", ret);
+	}
+}
+
+static void max77663_AlldumpRegister(void)
+{
+	struct max77663_chip *chip = max77663_chip;
+
+	u8 global_regs[] = { 0x00, 0x01, 0x02, 0x05, 0x0D, 0x0E, 0x13 };
+	u8 sd_regs[] = {
+		0x07, 0x0F, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D,
+		0x1E, 0x1F, 0x20, 0x21, 0x22
+	};
+	u8 ldo_regs[] = {
+		0x10, 0x11, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A,
+		0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34,
+		0x35
+	};
+	u8 gpio_regs[] = {
+		0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
+		0x40
+	};
+	u8 rtc_regs[] = {
+		0x01, 0x02, 0x03, 0x04, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B,
+		0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+		0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B
+	};
+	u8 osc_32k_regs[] = { 0x03 };
+	u8 bbc_regs[] = { 0x04 };
+	u8 onoff_regs[] = { 0x12, 0x15, 0x41, 0x42 };
+	u8 fps_regs[] = {
+		0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C,
+		0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56,
+		0x57
+	};
+	u8 cid_regs[] = { 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D };
+
+
+	max77663_dumpRegister(chip, "[Global]", global_regs,
+				   ARRAY_SIZE(global_regs), 0);
+	max77663_dumpRegister(chip, "[Step-Down]", sd_regs,
+				   ARRAY_SIZE(sd_regs), 0);
+	max77663_dumpRegister(chip, "[LDO]", ldo_regs,
+				   ARRAY_SIZE(ldo_regs), 0);
+	max77663_dumpRegister(chip, "[GPIO]", gpio_regs,
+				   ARRAY_SIZE(gpio_regs), 0);
+	max77663_dumpRegister(chip, "[RTC]", rtc_regs,
+				   ARRAY_SIZE(rtc_regs),1);
+	max77663_dumpRegister(chip, "[32kHz Oscillator]", osc_32k_regs,
+				   ARRAY_SIZE(osc_32k_regs), 0);
+	max77663_dumpRegister(chip, "[Backup Battery Charger]", bbc_regs,
+				   ARRAY_SIZE(bbc_regs), 0);
+	max77663_dumpRegister(chip, "[On/OFF Controller]", onoff_regs,
+				   ARRAY_SIZE(onoff_regs), 0);
+	max77663_dumpRegister(chip, "[Flexible Power Sequencer]", fps_regs,
+				   ARRAY_SIZE(fps_regs), 0);
+	max77663_dumpRegister(chip, "[Chip Identification]", cid_regs,
+				   ARRAY_SIZE(cid_regs), 0);
+
+}
+#endif
+
 #else
 static inline void max77663_debugfs_init(struct max77663_chip *chip)
 {
@@ -944,6 +1134,45 @@ static const struct regmap_config max77663_regmap_config_rtc = {
 	.readable_reg = rd_wr_reg_rtc,
 	.cache_type = REGCACHE_RBTREE,
 };
+
+#ifdef CONFIG_MACH_X3
+static int max77663_reboot_notify(struct notifier_block *nb,
+                                unsigned long event, void *data)
+{
+	struct max77663_chip *chip = max77663_chip;
+
+	dev_info(chip->dev, "%s: [%lu]\n", __func__, event);
+
+	switch (event) {
+		case SYS_RESTART:
+		case SYS_HALT:
+		case SYS_POWER_OFF: {
+			max77663_set_bits(chip->dev, 0x47, 0xFF, 0x6a, 0);
+			max77663_set_bits(chip->dev, 0x48, 0xFF, 0x5c, 0);
+			max77663_set_bits(chip->dev, 0x49, 0xFF, 0x00, 0);
+			max77663_set_bits(chip->dev, 0x4a, 0xFF, 0x07, 0);
+			max77663_set_bits(chip->dev, 0x4c, 0xFF, 0x6a, 0);
+			max77663_set_bits(chip->dev, 0x4f, 0xFF, 0x00, 0);
+			max77663_set_bits(chip->dev, 0x51, 0xFF, 0x23, 0);
+			max77663_set_bits(chip->dev, 0x52, 0xFF, 0x5c, 0);
+			max77663_set_bits(chip->dev, 0x53, 0xFF, 0x00, 0);
+//			max77663_set_bits(chip->dev, 0x03, 0x03, 0x03, 0);
+
+#ifdef CONFIG_DEBUG_FS
+//			max77663_AlldumpRegister();
+#endif
+
+			return NOTIFY_OK;
+		}
+	}
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block max77663_reboot_nb = {
+	.notifier_call = max77663_reboot_notify,
+};
+#endif
 
 static int max77663_probe(struct i2c_client *client,
 			  const struct i2c_device_id *id)
@@ -1026,12 +1255,7 @@ static int max77663_probe(struct i2c_client *client,
 	}
 
 	if (pdata->use_power_off && !pm_power_off)
-		pm_power_off = max77663_power_off;
-
-#ifdef CONFIG_MACH_X3
-	max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG1,
-				ONOFF_MRT_MASK, ONOFF_MRT_MASK_10S, 0);
-#endif
+		pm_power_off = (void (*)(void))max77663_power_off;
 
 	ret =  mfd_add_devices(&client->dev, -1, max77663_cells,
 			ARRAY_SIZE(max77663_cells), NULL, chip->irq_base);
@@ -1040,12 +1264,20 @@ static int max77663_probe(struct i2c_client *client,
 		goto out_exit;
 	}
 
+#ifdef CONFIG_MACH_X3
+	max77663_set_manual_resettime(chip);
+#endif
+
 	ret = mfd_add_devices(&client->dev, 0, pdata->sub_devices,
 			      pdata->num_subdevs, NULL, 0);
 	if (ret != 0) {
 		dev_err(&client->dev, "probe: Failed to add subdev: %d\n", ret);
 		goto out_mfd_clean;
 	}
+
+#ifdef CONFIG_MACH_X3
+	register_reboot_notifier(&max77663_reboot_nb);
+#endif
 
 	return 0;
 
@@ -1087,17 +1319,33 @@ static int max77663_suspend(struct device *dev)
 		disable_irq(client->irq);
 
 	ret = max77663_sleep(chip, true);
-	if (ret < 0)
+	if (ret < 0) {
+#ifdef CONFIG_MACH_X3
+		if (client->irq)
+			enable_irq(client->irq);
+#endif
 		dev_err(dev, "suspend: Failed to enable sleep\n");
+	}
 
 	return ret;
 }
+
+#if defined(CONFIG_MACH_DUMP_GPIO)
+static DEFINE_SPINLOCK(dump_spinlock);
+char gpio_regs_buf_suspend[PAGE_SIZE];
+extern const struct tegra_drive_pingroup_desc tegra_soc_drive_pingroups[TEGRA_MAX_DRIVE_PINGROUP];
+extern u32 pinmux_reg[TEGRA_MAX_PINGROUP + ARRAY_SIZE(tegra_soc_drive_pingroups)];
+#endif
 
 static int max77663_resume(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct max77663_chip *chip = i2c_get_clientdata(client);
 	int ret;
+#if defined(CONFIG_MACH_DUMP_GPIO)
+	int i;
+	u32 *ctx = pinmux_reg;
+#endif
 
 	ret = max77663_sleep(chip, false);
 	if (ret < 0) {
@@ -1108,12 +1356,44 @@ static int max77663_resume(struct device *dev)
 	if (client->irq)
 		enable_irq(client->irq);
 
+#if defined(CONFIG_MACH_DUMP_GPIO)
+	spin_lock(&dump_spinlock);
+
+	pr_info("\n==>dump pinmux regs\n");
+	for (i = 0; i < TEGRA_MAX_PINGROUP; i++)
+		pr_info("%16s %8x\n", tegra_soc_pingroups[i].name, *ctx++);
+
+	pr_info("\n==>dump pinmux drive regs\n");
+	for (i = 0; i < ARRAY_SIZE(tegra_soc_drive_pingroups); i++)
+		pr_info("%16s %8x\n", tegra_soc_drive_pingroups[i].name, *ctx++);
+
+	pr_info("\n==>dump gpio regs\n");
+	pr_info("Bank:Port CNF OE OUT\n");
+	pr_info("%s\n", gpio_regs_buf_suspend);
+
+	spin_unlock(&dump_spinlock);
+#endif
 	return 0;
 }
 #else
 #define max77663_suspend      NULL
 #define max77663_resume       NULL
 #endif /* CONFIG_PM_SLEEP */
+
+#ifdef CONFIG_MACH_X3
+static int __init max77663_reset_cause_cmdline(char *str)
+{
+	int output[4] = { 0 };
+ 
+	sscanf(str, "%d,%d,%d,%d ", &output[0], &output[1], &output[2], &output[3]);
+
+	printk("%s bootcause[%d] max77663RTCStatus[%x] max77663rebootcause[%x] max77663OnOffStat[%x]\n",
+		__func__, output[0], output[1], output[2], output[3]);
+
+	return 1;
+}
+__setup("pmicresetcause=", max77663_reset_cause_cmdline);
+#endif
 
 static const struct i2c_device_id max77663_id[] = {
 	{"max77663", 0},
@@ -1141,7 +1421,11 @@ static int __init max77663_init(void)
 {
 	return i2c_add_driver(&max77663_driver);
 }
+#ifdef CONFIG_MACH_X3
+arch_initcall(max77663_init);
+#else
 subsys_initcall(max77663_init);
+#endif
 
 static void __exit max77663_exit(void)
 {

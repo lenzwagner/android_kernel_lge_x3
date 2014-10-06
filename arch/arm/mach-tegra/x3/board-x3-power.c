@@ -397,6 +397,23 @@ static int __init lge_x3_init_regulators(void)
 
 	return platform_add_devices(regulator_devices, nregs);
 }
+static void x3_power_off(void)
+{
+	int ret;
+
+	pr_err("Powering off the device\n");
+
+#if defined(CONFIG_MFD_MAX77663)
+	/*
+	 * power-code should be completed in max77663
+	 */
+	ret = max77663_power_off();
+#endif
+	if (ret)
+		pr_err("failed to power off\n");
+
+	while(1);
+}
 
 int __init x3_regulator_init(void)
 {
