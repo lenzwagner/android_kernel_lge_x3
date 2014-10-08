@@ -41,13 +41,20 @@
 #define INITIAL_STATE		TEGRA_HP_DISABLED
 #define UP2G0_DELAY_MS		70
 #define UP2Gn_DELAY_MS		100
+#ifdef CONFIG_MACH_X3
+#define DOWN_DELAY_MS		1000
+#else
 #define DOWN_DELAY_MS		2000
+#endif
 
 /* tegra3_cpu_lock is tegra_cpu_lock from cpu-tegra.c */
 static struct mutex *tegra3_cpu_lock;
 
 static struct workqueue_struct *hotplug_wq;
 static struct delayed_work hotplug_work;
+#ifdef CONFIG_MACH_X3
+static int threads_count_hotplug_control_enable = 1;
+#endif
 
 static bool no_lp;
 module_param(no_lp, bool, 0644);
@@ -67,7 +74,11 @@ module_param(idle_bottom_freq, uint, 0644);
 static int mp_overhead = 10;
 module_param(mp_overhead, int, 0644);
 
+#ifdef CONFIG_MACH_X3
+static int balance_level = 75;
+#else
 static int balance_level = 60;
+#endif
 module_param(balance_level, int, 0644);
 
 static struct clk *cpu_clk;
@@ -197,7 +208,11 @@ static unsigned int rt_profile_sel;
 
 static unsigned int rt_profile_default[] = {
 /*      1,  2,  3,  4 - on-line cpus target */
+#ifdef CONFIG_MACH_X3
+	10,  11, 12, UINT_MAX
+#else
 	5,  9, 10, UINT_MAX
+#endif
 };
 
 static unsigned int rt_profile_1[] = {
@@ -256,6 +271,11 @@ static noinline int tegra_cpu_speed_balance(void)
 	}
 	nr_run_last = nr_run;
 
+#ifdef CONFIG_MACH_X3
+	if (threads_count_hotplug_control_enable == 0 && highest_speed >= 640000)
+		nr_run++;
+#endif
+
 	if (((tegra_count_slow_cpus(skewed_speed) >= 2) ||
 	     (nr_run < nr_cpus) ||
 	     tegra_cpu_edp_favor_down(nr_cpus, mp_overhead) ||
@@ -273,6 +293,48 @@ static noinline int tegra_cpu_speed_balance(void)
 	return TEGRA_CPU_SPEED_BALANCED;
 }
 
+#if defined(CONFIG_MACH_LGE)
+static void tegra_check_limited_max_cores(void)
+{
+	if (is_lp_cluster()) {
+		if (cpufreq_limited_max_cores_cur != cpufreq_limited_max_cores_expected) {
+			switch(cpufreq_limited_max_cores_expected) {
+				case 1:
+					set_cpu_present(1, false);
+					set_cpu_present(2, false);
+					set_cpu_present(3, false);
+					set_cpu_possible(1, false);
+					set_cpu_possible(2, false);
+					set_cpu_possible(3, false);
+					cpufreq_limited_max_cores_cur = cpufreq_limited_max_cores_expected;
+					break;
+				case 2:
+					set_cpu_present(1, true);
+					set_cpu_present(2, false);
+					set_cpu_present(3, false);
+					set_cpu_possible(1, true);
+					set_cpu_possible(2, false);
+					set_cpu_possible(3, false);
+					cpufreq_limited_max_cores_cur = cpufreq_limited_max_cores_expected;
+					break;
+				case 4:
+					set_cpu_present(1, true);
+					set_cpu_present(2, true);
+					set_cpu_present(3, true);
+					set_cpu_possible(1, true);
+					set_cpu_possible(2, true);
+					set_cpu_possible(3, true);
+					cpufreq_limited_max_cores_cur = cpufreq_limited_max_cores_expected;
+					break;
+				default:
+					cpufreq_limited_max_cores_expected = cpufreq_limited_max_cores_cur;
+					break;
+			}
+		}
+	}
+}
+#endif
+
 static void __cpuinit tegra_auto_hotplug_work_func(struct work_struct *work)
 {
 	bool up = false;
@@ -281,11 +343,22 @@ static void __cpuinit tegra_auto_hotplug_work_func(struct work_struct *work)
 
 	mutex_lock(tegra3_cpu_lock);
 
+#if defined(CONFIG_MACH_LGE)	
+	tegra_check_limited_max_cores();
+#endif	
+
 	switch (hp_state) {
 	case TEGRA_HP_DISABLED:
 	case TEGRA_HP_IDLE:
 		break;
 	case TEGRA_HP_DOWN:
+#ifdef CONFIG_MACH_X3
+		if ((now - last_change_time) < down_delay) {
+			queue_delayed_work(
+				hotplug_wq, &hotplug_work, up2gn_delay);
+			break;
+		}
+#endif
 		cpu = tegra_get_slowest_cpu_n();
 		if (cpu < nr_cpu_ids) {
 			up = false;
@@ -382,6 +455,18 @@ static int min_cpus_notify(struct notifier_block *nb, unsigned long n, void *p)
 static struct notifier_block min_cpus_notifier = {
 	.notifier_call = min_cpus_notify,
 };
+
+#ifdef CONFIG_MACH_X3
+int tegra_get_threads_count_hotplug_control(void)
+{	
+	return threads_count_hotplug_control_enable;
+}
+
+void tegra_set_threads_count_hotplug_control(int enable)
+{	
+	threads_count_hotplug_control_enable = enable;
+}
+#endif
 
 void tegra_auto_hotplug_governor(unsigned int cpu_freq, bool suspend)
 {
@@ -600,6 +685,26 @@ static int max_cpus_set(void *data, u64 val)
 	return 0;
 }
 DEFINE_SIMPLE_ATTRIBUTE(max_cpus_fops, max_cpus_get, max_cpus_set, "%llu\n");
+
+#ifdef CONFIG_MACH_X3
+void tegra_auto_hotplug_set_min_cpus(int num_cpus)
+{
+	if (num_cpus < 0) {
+		pr_err("%s: invalid num_cpus=%d\n", __func__, num_cpus);
+		return;
+	}
+	min_cpus_set(NULL, num_cpus);
+}
+
+void tegra_auto_hotplug_set_max_cpus(int num_cpus)
+{
+	if (num_cpus < 0) {
+		pr_err("%s: invalid num_cpus=%d\n", __func__, num_cpus);
+		return;
+	}
+	max_cpus_set(NULL, num_cpus);
+}
+#endif
 
 static int __init tegra_auto_hotplug_debug_init(void)
 {

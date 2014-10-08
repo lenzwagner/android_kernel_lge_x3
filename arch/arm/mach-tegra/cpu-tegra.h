@@ -48,6 +48,13 @@ static inline void tegra_auto_hotplug_governor(unsigned int cpu_freq,
 { }
 #endif
 
+#ifdef CONFIG_MACH_LGE
+long tegra_get_cur_skin_temp(void);
+#else
+static long inline tegra_get_cur_skin_temp(void)
+{ return 0; }
+#endif
+
 #ifdef CONFIG_TEGRA_EDP_LIMITS
 bool tegra_cpu_edp_favor_up(unsigned int n, int mp_overhead);
 bool tegra_cpu_edp_favor_down(unsigned int n, int mp_overhead);
@@ -57,6 +64,11 @@ static inline bool tegra_cpu_edp_favor_up(unsigned int n, int mp_overhead)
 static inline bool tegra_cpu_edp_favor_down(unsigned int n, int mp_overhead)
 { return false; }
 #endif
+
+/*********************************************************************
+ *                     VOTE MAX FREQ                       *
+ *********************************************************************/
+#define LOAD_SHAPER_BY_VOTE_MAX_FREQ
 
 #ifdef CONFIG_CPU_FREQ
 int tegra_suspended_target(unsigned int target_freq);

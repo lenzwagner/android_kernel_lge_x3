@@ -432,6 +432,7 @@ int __init x3_regulator_init(void)
 
 	lge_x3_init_regulators();
 
+	pm_power_off = x3_power_off;
 	return 0;
 }
 
@@ -458,17 +459,18 @@ static struct tegra_suspend_platform_data x3_suspend_data = {
 
 	.board_suspend = x3_board_suspend,
 	.board_resume = x3_board_resume,
+#ifdef CONFIG_TEGRA_LP1_950
+	.lp1_lowvolt_support = true,
+	.i2c_base_addr = TEGRA_I2C5_BASE,
+	.pmuslave_addr = 0x24,
+	.core_reg_addr = 0x5B,
+	.lp1_core_volt_low_cold = 0x1D,
+	.lp1_core_volt_low = 0x1D,
+	.lp1_core_volt_high = 0x33,
+#endif
 
         .cpu_lp2_min_residency = 20000,
 
-#ifdef CONFIG_TEGRA_LP1_950
-	.lp1_lowvolt_support = false,
-	.i2c_base_addr = 0,
-	.pmuslave_addr = 0,
-	.core_reg_addr = 0,
-	.lp1_core_volt_low = 0,
-	.lp1_core_volt_high = 0,
-#endif
 };
 
 static void x3_init_deep_sleep_mode(void)

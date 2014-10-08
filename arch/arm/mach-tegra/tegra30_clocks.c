@@ -24,6 +24,10 @@
 #include <linux/spinlock.h>
 #include <linux/delay.h>
 #include <linux/err.h>
+//                    
+#ifdef CONFIG_MACH_X3
+#include <linux/earlysuspend.h>
+#endif
 #include <linux/io.h>
 #include <linux/clk.h>
 #include <linux/cpufreq.h>
@@ -313,6 +317,18 @@
 /* Threshold to engage CPU clock skipper during CPU rate change */
 #define SKIPPER_ENGAGE_RATE		 800000000
 
+//                    
+#ifdef CONFIG_MACH_X3
+#ifdef CONFIG_HAS_EARLYSUSPEND
+#define EARLY_SUSPEND_MIN_CPU_FREQ	51000000
+#define ACTIVE_MIN_CPU_FREQ		51000000
+#define SCLK_MIN_FREQ			12000000
+static struct cpufreq_frequency_table *selected_cpufreq_table;
+#else
+#define SCLK_MIN_FREQ			40000000
+#endif
+#endif /* CONFIG_MACH_X3 */
+
 static void tegra3_pllp_init_dependencies(unsigned long pllp_rate);
 static int tegra3_clk_shared_bus_update(struct clk *bus);
 static int tegra3_emc_relock_set_rate(struct clk *emc, unsigned long old_rate,
@@ -320,6 +336,7 @@ static int tegra3_emc_relock_set_rate(struct clk *emc, unsigned long old_rate,
 
 static unsigned long cpu_stay_on_backup_max;
 static struct clk *emc_bridge;
+static struct clk *cpu_mode_sclk;
 
 static bool detach_shared_bus = true;
 module_param(detach_shared_bus, bool, 0644);
@@ -1056,6 +1073,8 @@ static int tegra3_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 	flags |= (p->u.cpu.mode == MODE_LP) ? TEGRA_POWER_CLUSTER_LP :
 		TEGRA_POWER_CLUSTER_G;
 
+	tegra_clk_prepare_enable(cpu_mode_sclk);	/* set SCLK floor for cluster switch */
+
 	/* Since in both LP and G mode CPU main and backup sources are the
 	   same, set rate on the new parent just synchronizes super-clock
 	   muxes before mode switch with no PLL re-locking */
@@ -1063,6 +1082,7 @@ static int tegra3_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 	if (ret) {
 		pr_err("%s: Failed to set rate %lu for %s\n",
 		       __func__, rate, p->name);
+		tegra_clk_disable_unprepare(cpu_mode_sclk);
 		return ret;
 	}
 
@@ -1078,6 +1098,7 @@ static int tegra3_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 			tegra_clk_disable_unprepare(p);
 		pr_err("%s: Failed to switch %s mode to %s\n",
 		       __func__, c->name, p->name);
+		tegra_clk_disable_unprepare(cpu_mode_sclk);
 		return ret;
 	}
 
@@ -1086,6 +1107,7 @@ static int tegra3_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 		tegra_clk_disable_unprepare(c->parent);
 
 	clk_reparent(c, p);
+	tegra_clk_disable_unprepare(cpu_mode_sclk);
 	return 0;
 }
 
@@ -4020,10 +4042,11 @@ static struct clk tegra_clk_sclk = {
 	.ops	= &tegra_super_ops,
 #ifdef CONFIG_MACH_X3
 	.max_rate = 334000000,
+	.min_rate = SCLK_MIN_FREQ,
 #else
 	.max_rate = 378000000,
-#endif
 	.min_rate = 12000000,
+#endif
 };
 
 static struct clk tegra_clk_virtual_cpu_g = {
@@ -4084,10 +4107,11 @@ static struct clk tegra_clk_hclk = {
 	.ops		= &tegra_bus_ops,
 #ifdef CONFIG_MACH_X3
 	.max_rate       = 334000000,
+	.min_rate       = SCLK_MIN_FREQ,
 #else
 	.max_rate       = 378000000,
-#endif
 	.min_rate       = 12000000,
+#endif
 };
 
 static struct clk tegra_clk_pclk = {
@@ -4097,8 +4121,13 @@ static struct clk tegra_clk_pclk = {
 	.reg		= 0x30,
 	.reg_shift	= 0,
 	.ops		= &tegra_bus_ops,
+#ifdef CONFIG_MACH_X3
+	.max_rate       = 167000000,
+	.min_rate       = SCLK_MIN_FREQ,
+#else
 	.max_rate       = 167000000,
 	.min_rate       = 12000000,
+#endif
 };
 
 static struct raw_notifier_head sbus_rate_change_nh;
@@ -4458,6 +4487,7 @@ struct clk tegra_list_clks[] = {
 	SHARED_CLK("usb2.sclk",	"tegra-ehci.1",		"sclk",	&tegra_clk_sbus_cmplx, NULL, 0, 0),
 	SHARED_CLK("usb3.sclk",	"tegra-ehci.2",		"sclk",	&tegra_clk_sbus_cmplx, NULL, 0, 0),
 	SHARED_CLK("wake.sclk",	"wake_sclk",		"sclk",	&tegra_clk_sbus_cmplx, NULL, 0, 0),
+	SHARED_CLK("cpu_mode.sclk","cpu_mode",		"sclk",	&tegra_clk_sbus_cmplx, NULL, 0, 0),
 	SHARED_CLK("mon.avp",	"tegra_actmon",		"avp",	&tegra_clk_sbus_cmplx, NULL, 0, 0),
 	SHARED_CLK("cap.sclk",	"cap_sclk",		NULL,	&tegra_clk_sbus_cmplx, NULL, 0, SHARED_CEILING),
 	SHARED_CLK("cap.throttle.sclk", "cap_throttle",	NULL,	&tegra_clk_sbus_cmplx, NULL, 0, SHARED_CEILING),
@@ -5283,6 +5313,33 @@ static void tegra_clk_resume(void)
 #define tegra_clk_resume NULL
 #endif
 
+//                    
+#ifdef CONFIG_MACH_X3
+#ifdef CONFIG_HAS_EARLYSUSPEND
+
+static struct early_suspend tegra3_clk_early_suspender;
+
+static void tegra3_clk_early_suspend(struct early_suspend *h)
+{
+	struct clk *cpu_clk_lp = &tegra_clk_virtual_cpu_lp;
+
+	cpu_clk_lp->min_rate = EARLY_SUSPEND_MIN_CPU_FREQ;
+
+    pr_info("%s: min_rate = %lu\n", __func__, cpu_clk_lp->min_rate);
+}
+
+static void tegra3_clk_late_resume(struct early_suspend *h)
+{
+	struct clk *cpu_clk_lp = &tegra_clk_virtual_cpu_lp;
+
+	cpu_clk_lp->min_rate = ACTIVE_MIN_CPU_FREQ;
+
+    pr_info("%s: min_rate = %lu\n", __func__, cpu_clk_lp->min_rate);
+}
+#endif
+
+#endif /* CONFIG_MACH_X3 */
+
 static struct syscore_ops tegra_clk_syscore_ops = {
 	.suspend = tegra_clk_suspend,
 	.resume = tegra_clk_resume,
@@ -5574,9 +5631,18 @@ void __init tegra30_init_clocks(void)
 		tegra3_init_one_clock(&tegra_clk_out_list[i]);
 
 	emc_bridge = &tegra_clk_emc_bridge;
+	cpu_mode_sclk = tegra_get_clock_by_name("cpu_mode.sclk");
 
 	/* Initialize to default */
 	tegra_init_cpu_edp_limits(0);
 
 	register_syscore_ops(&tegra_clk_syscore_ops);
+//                    
+#ifdef CONFIG_MACH_X3
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	tegra3_clk_early_suspender.suspend = tegra3_clk_early_suspend;
+	tegra3_clk_early_suspender.resume = tegra3_clk_late_resume;
+	register_early_suspend(&tegra3_clk_early_suspender);
+#endif
+#endif /* CONFIG_MACH_X3 */
 }
