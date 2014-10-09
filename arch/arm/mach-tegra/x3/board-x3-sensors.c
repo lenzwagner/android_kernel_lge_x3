@@ -154,7 +154,8 @@ static void x3_nct1008_init(void)
 	}
 
 	tegra_platform_edp_init(x3_nct1008_pdata.trips,
-				&x3_nct1008_pdata.num_trips);
+				&x3_nct1008_pdata.num_trips,
+				0); /* edp temperature margin */
 
 	x3_i2c4_nct1008_board_info[0].irq = gpio_to_irq(X3_NCT1008_IRQ);
 
