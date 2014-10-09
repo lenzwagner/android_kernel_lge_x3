@@ -336,12 +336,14 @@ static struct tegra_system_edp_entry power_edp_default_limits[] = {
 static const int temperatures[] = { /* degree celcius (C) */
 	23, 40, 50, 60, 70, 74, 78, 82, 86, 90, 94, 98, 102,
 };
+
 static const int power_cap_levels[] = { /* milliwatts (mW) */
-	500, 1000, 1500, 2000, 2500, 3000, 3500,
-	4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500,
-	8000, 8500, 9000, 9500, 10000, 10500, 11000, 11500,
-	12000, 12500, 13000, 13500, 14000, 14500, 15000, 15500,
-	16000, 16500, 17000,
+	  700,  1700,  2700,  3700,  3800,  3900,  4500,  4600,
+	 4700,  4800,  4900,  5200,  5300,  5400,  5500,  5800,
+	 5900,  6200,  6400,  6500,  6800,  7200,  7500,  8200,
+	 8500,  9200,  9500, 10200, 10500, 11200, 11500, 12200,
+	12500, 13200, 13500, 14200, 14500, 15200, 15500, 16500,
+	17500
 };
 
 static struct tegra_edp_cpu_leakage_params leakage_params[] = {
@@ -375,6 +377,7 @@ static struct tegra_edp_cpu_leakage_params leakage_params[] = {
 			   {   15618709,   -4576116,   158401,  -1538, },
 			 },
 		 },
+		.volt_temp_cap = { 70, 1300 },
 	},
 	{
 		.cpu_speedo_id	    = 1, /* A01P+ CPU */
@@ -407,6 +410,7 @@ static struct tegra_edp_cpu_leakage_params leakage_params[] = {
 			 },
 		 },
 		.safety_cap = { 1810500, 1810500, 1606500, 1606500 },
+		.volt_temp_cap = { 70, 1300 },
 	},
 	{
 		.cpu_speedo_id	    = 2, /* A01P+ fast CPU */
@@ -438,7 +442,8 @@ static struct tegra_edp_cpu_leakage_params leakage_params[] = {
 			   {   15618709,   -4576116,   158401,  -1538, },
 			 },
 		 },
-		.safety_cap = { 1912500, 1912500, 1708500, 1708500 },
+		.safety_cap = { 1912500, 1912500, 1912500, 1912500 },
+		.volt_temp_cap = { 70, 1300 },
 	},
 };
 
@@ -465,10 +470,11 @@ static inline s64 edp_pow(s64 val, int pwr)
 /*
  * Find the maximum frequency that results in dynamic and leakage current that
  * is less than the regulator current limit.
- * temp_C - always valid
- * power_mW - valid or -1 (infinite)
+ * temp_C - valid or -EINVAL
+ * power_mW - valid or -1 (infinite) or -EINVAL
  */
-unsigned int edp_calculate_maxf(struct tegra_edp_cpu_leakage_params *params,
+static unsigned int edp_calculate_maxf(
+				struct tegra_edp_cpu_leakage_params *params,
 				int temp_C, int power_mW,
 				int iddq_mA,
 				int n_cores_idx)
@@ -482,6 +488,11 @@ unsigned int edp_calculate_maxf(struct tegra_edp_cpu_leakage_params *params,
 	for (f = freq_voltage_lut_size - 1; f >= 0; f--) {
 		freq_KHz = freq_voltage_lut[f].freq / 1000;
 		voltage_mV = freq_voltage_lut[f].voltage_mV;
+
+		/* Constrain Volt-Temp. Eg. at Tj >= 70C, no VDD_CPU > 1.24V */
+		if (temp_C > params->volt_temp_cap.temperature &&
+		    voltage_mV > params->volt_temp_cap.voltage_limit_mV)
+			continue;
 
 		/* Calculate leakage current */
 		leakage_mA = 0;
@@ -511,6 +522,13 @@ unsigned int edp_calculate_maxf(struct tegra_edp_cpu_leakage_params *params,
 				}
 			}
 		}
+		/* leakage cannot be negative => leakage model has error */
+		if (leakage_mA <= 0) {
+			pr_err("VDD_CPU EDP failed: IDDQ too high (%d mA)\n",
+			       iddq_mA);
+			return -EINVAL;
+		}
+
 		leakage_mA *= params->leakage_consts_n[n_cores_idx];
 		/* leakage_const_n was pre-multiplied by 1,000,000 */
 		leakage_mA = div64_s64(leakage_mA, 1000000);
@@ -532,7 +550,7 @@ unsigned int edp_calculate_maxf(struct tegra_edp_cpu_leakage_params *params,
 			return freq_KHz;
 		}
 	}
-	return 0;
+	return -EINVAL;
 }
 
 static int edp_relate_freq_voltage(struct clk *clk_cpu_g,
@@ -574,7 +592,7 @@ unsigned int tegra_edp_find_maxf(int volt)
 }
 
 
-int edp_find_speedo_idx(int cpu_speedo_id, unsigned int *cpu_speedo_idx)
+static int edp_find_speedo_idx(int cpu_speedo_id, unsigned int *cpu_speedo_idx)
 {
 	int i;
 
@@ -667,6 +685,8 @@ static int init_cpu_edp_limits_calculated(void)
 						   -1,
 						   iddq_mA,
 						   n_cores_idx);
+			if (limit == -EINVAL)
+				return -EINVAL;
 			/* apply safety cap if it is specified */
 			if (n_cores_idx < 4) {
 				cap = params->safety_cap[n_cores_idx];
@@ -686,6 +706,8 @@ static int init_cpu_edp_limits_calculated(void)
 						   power_cap_levels[pwr_idx],
 						   iddq_mA,
 						   n_cores_idx);
+			if (limit == -EINVAL)
+				return -EINVAL;
 			power_edp_calc_limits[pwr_idx].
 				freq_limits[n_cores_idx] = limit;
 		}
@@ -771,8 +793,18 @@ static int __init init_cpu_edp_limits_lookup(void)
 
 void tegra_recalculate_cpu_edp_limits(void)
 {
-	if (tegra_chip_id == TEGRA11X)
-		init_cpu_edp_limits_calculated();
+	if (tegra_chip_id != TEGRA11X)
+		return;
+
+	if (init_cpu_edp_limits_calculated() == 0)
+		return;
+
+	/* Revert to default EDP table on error */
+	edp_limits = edp_default_limits;
+	edp_limits_size = ARRAY_SIZE(edp_default_limits);
+
+	power_edp_limits = power_edp_default_limits;
+	power_edp_limits_size = ARRAY_SIZE(power_edp_default_limits);
 }
 
 /*
@@ -889,7 +921,6 @@ void tegra_platform_edp_init(struct thermal_trip_info *trips,
 			(cpu_edp_limits[i].temperature * 1000) - margin;
 		trip_state->trip_type = THERMAL_TRIP_ACTIVE;
 		trip_state->upper = trip_state->lower = i + 1;
-		trip_state->hysteresis = 1000;
 
 		(*num_trips)++;
 
@@ -918,7 +949,7 @@ static int edp_debugfs_show(struct seq_file *s, void *data)
 
 	tegra_get_edp_limit(&th_idx);
 	seq_printf(s, "-- VDD_CPU %sEDP table (%umA = %umA - %umA) --\n",
-		   edp_limits == edp_default_limits ? "default " : "",
+		   edp_limits == edp_default_limits ? "**default** " : "",
 		   regulator_cur - edp_reg_override_mA,
 		   regulator_cur, edp_reg_override_mA);
 	seq_printf(s, "%6s %10s %10s %10s %10s\n",
@@ -933,7 +964,9 @@ static int edp_debugfs_show(struct seq_file *s, void *data)
 			   edp_limits[i].freq_limits[3]);
 	}
 
-	seq_printf(s, "-- VDD_CPU Power EDP table --\n");
+	seq_printf(s, "-- VDD_CPU %sPower EDP table --\n",
+		   power_edp_limits == power_edp_default_limits ?
+		   "**default** " : "");
 	seq_printf(s, "%6s %10s %10s %10s %10s\n",
 		   " Power", "1-core", "2-cores", "3-cores", "4-cores");
 	for (i = 0; i < power_edp_limits_size; i++) {
@@ -953,7 +986,6 @@ static int edp_debugfs_show(struct seq_file *s, void *data)
 			   system_edp_limits[2],
 			   system_edp_limits[3]);
 	}
-
 	return 0;
 }
 
