@@ -409,7 +409,6 @@ struct tegra_dc_out {
 	int performance_tuning;
 	int video_min_bw;
 
-	int	(*enable)(void);
 	int	(*enable)(struct device *);
 	int	(*postpoweron)(void);
 #ifdef CONFIG_MACH_X3
