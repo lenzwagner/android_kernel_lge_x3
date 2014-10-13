@@ -95,6 +95,7 @@ static int tegra_fb_set_par(struct fb_info *info)
 {
 	struct tegra_fb_info *tegra_fb = info->par;
 	struct fb_var_screeninfo *var = &info->var;
+	struct tegra_dc *dc = tegra_fb->win->dc;
 
 	if (var->bits_per_pixel) {
 		/* we only support RGB ordering for now */
