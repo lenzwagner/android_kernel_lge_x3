@@ -24,7 +24,7 @@
 struct nvhost_chip_support;
 struct mem_mgr;
 struct mem_handle;
-struct nvhost_device;
+struct platform_device;
 
 enum mem_mgr_flag {
 	mem_mgr_flag_uncacheable = 0,
@@ -45,7 +45,7 @@ struct mem_handle *nvhost_memmgr_alloc(struct mem_mgr *,
 		size_t size, size_t align,
 		int flags);
 struct mem_handle *nvhost_memmgr_get(struct mem_mgr *,
-		u32 id, struct nvhost_device *dev);
+		u32 id, struct platform_device *dev);
 static inline int nvhost_memmgr_type(u32 id) { return id & 0x3; }
 static inline int nvhost_memmgr_id(u32 id) { return id & ~0x3; }
 

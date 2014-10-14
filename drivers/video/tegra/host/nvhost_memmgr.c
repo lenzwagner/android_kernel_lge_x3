@@ -99,7 +99,7 @@ struct mem_handle *nvhost_memmgr_alloc(struct mem_mgr *mgr,
 }
 
 struct mem_handle *nvhost_memmgr_get(struct mem_mgr *mgr,
-		u32 id, struct nvhost_device *dev)
+		u32 id, struct platform_device *dev)
 {
 	struct mem_handle *h = NULL;
 

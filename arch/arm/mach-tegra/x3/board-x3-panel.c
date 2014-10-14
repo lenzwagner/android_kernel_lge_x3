@@ -22,14 +22,16 @@
 #include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
 #include <linux/resource.h>
-#include <asm/mach-types.h>
 #include <linux/platform_device.h>
 #include <linux/earlysuspend.h>
 #include <linux/tegra_pwm_bl.h>
 #include <linux/pwm_backlight.h>
-#include <asm/atomic.h>
 #include <linux/nvhost.h>
 #include <linux/nvmap.h>
+
+#include <asm/mach-types.h>
+#include <asm/atomic.h>
+
 #include <mach/irqs.h>
 #include <mach/iomap.h>
 #include <mach/dc.h>
@@ -330,6 +332,60 @@ static int x3_hdmi_disable(void)
 	return 0;
 }
 
+static struct resource x3_disp1_resources[] = {
+	{
+		.name	= "irq",
+		.start	= INT_DISPLAY_GENERAL,
+		.end	= INT_DISPLAY_GENERAL,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "regs",
+		.start	= TEGRA_DISPLAY_BASE,
+		.end	= TEGRA_DISPLAY_BASE + TEGRA_DISPLAY_SIZE-1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "fbmem",
+		.start	= 0,	/* Filled in by x3_lgit_panel_init() */
+		.end	= 0,	/* Filled in by x3_lgit_panel_init() */
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "dsi_regs",
+		.start	= TEGRA_DSI_BASE,
+		.end	= TEGRA_DSI_BASE + TEGRA_DSI_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+static struct resource x3_disp2_resources[] = {
+	{
+		.name	= "irq",
+		.start	= INT_DISPLAY_B_GENERAL,
+		.end	= INT_DISPLAY_B_GENERAL,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "regs",
+		.start	= TEGRA_DISPLAY2_BASE,
+		.end	= TEGRA_DISPLAY2_BASE + TEGRA_DISPLAY2_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "fbmem",
+		.flags	= IORESOURCE_MEM,
+		.start	= 0,
+		.end	= 0,
+	},
+	{
+		.name	= "hdmi_regs",
+		.start	= TEGRA_HDMI_BASE,
+		.end	= TEGRA_HDMI_BASE + TEGRA_HDMI_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
 static struct tegra_dc_mode x3_panel_modes[] = {
 #if defined(CONFIG_MACH_HD7_HITACHI)
 	{
@@ -592,6 +648,27 @@ static struct tegra_dc_platform_data x3_disp1_pdata = {
 	.fb		= &x3_fb_data,
 };
 
+static struct platform_device x3_disp1_device = {
+	.name		= "tegradc",
+	.id		= 0,
+	.resource	= x3_disp1_resources,
+	.num_resources	= ARRAY_SIZE(x3_disp1_resources),
+	.dev = {
+		.platform_data = &x3_disp1_pdata,
+	},
+};
+
+static struct platform_device x3_disp2_device = {
+	.name		= "tegradc",
+	.id		= 1,
+	.resource	= x3_disp2_resources,
+	.num_resources	= ARRAY_SIZE(x3_disp2_resources),
+	.dev = {
+		.platform_data = &x3_disp2_pdata,
+	},
+};
+
+#if defined(CONFIG_TEGRA_NVMAP)
 static struct nvmap_platform_carveout x3_carveouts[] = {
 	[0] = NVMAP_HEAP_CARVEOUT_IRAM_INIT,
 	[1] = {
@@ -615,9 +692,12 @@ static struct platform_device x3_nvmap_device = {
 		.platform_data = &x3_nvmap_data,
 	},
 };
+#endif
 
 static struct platform_device *x3_gfx_devices[] __initdata = {
+#if defined(CONFIG_TEGRA_NVMAP)
 	&x3_nvmap_device,
+#endif
 #if 0
 #if IS_EXTERNAL_PWM
 	&tegra_pwfm3_device,
@@ -738,12 +818,13 @@ static struct spi_board_info lgd_spi_dev[] = {
 int __init x3_panel_init(void)
 {
 	int err;
-	struct resource *res;
-
-	bl_output = x3_bl_output_measured;
+	struct resource __maybe_unused *res;
+	struct platform_device *phost1x;
 
 	if (WARN_ON(ARRAY_SIZE(x3_bl_output_measured) != 256))
 		pr_err("bl_output array does not have 256 elements\n");
+
+	bl_output = x3_bl_output_measured;
 
 #if !defined(CONFIG_MACH_RGB_CONVERTOR_SPI)
 	gpio_init_set();
@@ -754,32 +835,31 @@ int __init x3_panel_init(void)
 	x3_carveouts[1].size = tegra_carveout_size;
 #endif
 
-	tegra_gpio_enable(x3_hdmi_hpd);
-	gpio_request(x3_hdmi_hpd, "hdmi_hpd");
-	gpio_direction_input(x3_hdmi_hpd);
-
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	x3_panel_early_suspender.suspend = x3_panel_early_suspend;
-	x3_panel_early_suspender.resume = x3_panel_late_resume;
-	x3_panel_early_suspender.level = EARLY_SUSPEND_LEVEL_DISABLE_FB;
-	register_early_suspend(&x3_panel_early_suspender);
-#endif
-
-	tegra_disp1_device.dev.platform_data = &x3_disp1_pdata;
-	tegra_disp2_device.dev.platform_data = &x3_disp2_pdata;
-
-#ifdef CONFIG_TEGRA_GRHOST
-	err = tegra3_register_host1x_devices();
-	if (err)
+//	tegra_gpio_enable(x3_hdmi_hpd);
+	err = gpio_request(x3_hdmi_hpd, "hdmi_hpd");
+	if (err < 0) {
+		pr_err("%s: gpio_request failed %d\n", __func__, err);
 		return err;
-#endif
+	}
+	err = gpio_direction_input(x3_hdmi_hpd);
+	if (err < 0) {
+		pr_err("%s: gpio_direction_input failed %d\n",
+			__func__, err);
+		gpio_free(x3_hdmi_hpd);
+		return err;
+	}
 
 	err = platform_add_devices(x3_gfx_devices,
 				ARRAY_SIZE(x3_gfx_devices));
 
+#ifdef CONFIG_TEGRA_GRHOST
+	phost1x = tegra3_register_host1x_devices();
+	if (!phost1x)
+		return -EINVAL;
+#endif
+
 #if defined(CONFIG_TEGRA_GRHOST) && defined(CONFIG_TEGRA_DC)
-	res = nvhost_get_resource_byname(&tegra_disp1_device,
+	res = platform_get_resource_byname(&x3_disp1_device,
 					 IORESOURCE_MEM, "fbmem");
 	res->start = tegra_fb_start;
 	res->end = tegra_fb_start + tegra_fb_size - 1;
@@ -790,28 +870,48 @@ int __init x3_panel_init(void)
 #endif
 
 	/* Copy the bootloader fb to the fb. */
-	tegra_move_framebuffer(tegra_fb_start, tegra_bootloader_fb_start,
+	__tegra_move_framebuffer(&x3_nvmap_device,
+		tegra_fb_start, tegra_bootloader_fb_start,
 		min(tegra_fb_size, tegra_bootloader_fb_size));
 
 #if defined(CONFIG_TEGRA_GRHOST) && defined(CONFIG_TEGRA_DC)
-	if (!err)
-		err = nvhost_device_register(&tegra_disp1_device);
+	if (!err) {
+		x3_disp1_device.dev.parent = &phost1x->dev;
+		err = platform_device_register(&x3_disp1_device);
+	}
 
-	res = nvhost_get_resource_byname(&tegra_disp2_device,
+	res = platform_get_resource_byname(&x3_disp2_device,
 					 IORESOURCE_MEM, "fbmem");
 	res->start = tegra_fb2_start;
 	res->end = tegra_fb2_start + tegra_fb2_size - 1;
-
-	if (!err)
-		err = nvhost_device_register(&tegra_disp2_device);
+	if (!err) {
+		x3_disp2_device.dev.parent = &phost1x->dev;
+		err = platform_device_register(&x3_disp2_device);
+	}
 #endif
 
 #if defined(CONFIG_TEGRA_GRHOST) && defined(CONFIG_TEGRA_NVAVP)
-	if (!err)
-		err = nvhost_device_register(&nvavp_device);
+	if (!err) {
+		nvavp_device.dev.parent = &phost1x->dev;
+		err = platform_device_register(&nvavp_device);
+	}
 #endif
+
+#if 0
+	if (!err)
+		err = platform_add_devices(x3_bl_devices,
+				ARRAY_SIZE(x3_bl_devices));
+#endif
+
 	bridge_work_queue =
 		create_singlethread_workqueue("bridge_spi_transaction");
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	x3_panel_early_suspender.suspend = x3_panel_early_suspend;
+	x3_panel_early_suspender.resume = x3_panel_late_resume;
+	x3_panel_early_suspender.level = EARLY_SUSPEND_LEVEL_DISABLE_FB;
+	register_early_suspend(&x3_panel_early_suspender);
+#endif
 
 	return err;
 }

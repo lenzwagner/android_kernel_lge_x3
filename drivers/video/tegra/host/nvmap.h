@@ -24,7 +24,7 @@
 #include "nvhost_memmgr.h"
 
 struct nvhost_chip_support;
-struct nvhost_device;
+struct platform_device;
 struct sg_table;
 
 struct mem_mgr *nvhost_nvmap_alloc_mgr(void);
@@ -44,6 +44,6 @@ void *nvhost_nvmap_kmap(struct mem_handle *handle, unsigned int pagenum);
 void nvhost_nvmap_kunmap(struct mem_handle *handle, unsigned int pagenum,
 		void *addr);
 struct mem_handle *nvhost_nvmap_get(struct mem_mgr *mgr,
-		u32 id, struct nvhost_device *dev);
+		u32 id, struct platform_device *dev);
 
 #endif

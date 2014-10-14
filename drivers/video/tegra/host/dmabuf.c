@@ -80,7 +80,7 @@ void nvhost_dmabuf_kunmap(struct mem_handle *handle, unsigned int pagenum,
 	dma_buf_kunmap(to_dmabuf(handle), pagenum, addr);
 }
 
-struct mem_handle *nvhost_dmabuf_get(u32 id, struct nvhost_device *dev)
+struct mem_handle *nvhost_dmabuf_get(u32 id, struct platform_device *dev)
 {
 	struct mem_handle *h;
 	struct dma_buf *buf;
