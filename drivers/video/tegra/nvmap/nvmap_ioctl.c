@@ -603,11 +603,17 @@ static bool fast_cache_maint(struct nvmap_client *client, struct nvmap_handle *h
 			}
 		}
 	}
-	ret = true;
-out:
-#endif
-	return ret;
+return true;
 }
+#else
+static inline bool fast_cache_maint(struct nvmap_client *client,
+				    struct nvmap_handle *h,
+				    unsigned long start, unsigned long end,
+				    unsigned int op)
+{
+	return false;
+}
+#endif
 
 static int cache_maint(struct nvmap_client *client, struct nvmap_handle *h,
 		       unsigned long start, unsigned long end, unsigned int op)
