@@ -124,6 +124,13 @@ config CPU_FREQ_DEFAULT_GOV_ABYSSPLUGV2
 	help
           Use the CPUFreq governor 'abyssplugv2' as default.
 
+config CPU_FREQ_DEFAULT_GOV_INTELLIMM
+        bool "intelliminmax"
+        select CPU_FREQ_GOV_INTELLIMM
+        help
+          Use the CPUFreq governor 'intelliminmax' as default. This is
+          governor will use only 3 different frequencies, idle, UI and max
+
 endchoice
 
 config CPU_FREQ_GOV_PERFORMANCE
@@ -255,6 +262,16 @@ config CPU_FREQ_GOV_ABYSSPLUGV2
 
           If you don't have one of these architectures or devices, use
           'ondemand' instead.
+
+          If in doubt, say N.
+
+config CPU_FREQ_GOV_INTELLIMM
+        tristate "'intelliminmax' cpufreq policy governor"
+        help
+          To compile this driver as a module, choose M here: the
+          module will be called cpufreq_interactive.
+
+          For details, take a look at linux/Documentation/cpu-freq.
 
           If in doubt, say N.
 
