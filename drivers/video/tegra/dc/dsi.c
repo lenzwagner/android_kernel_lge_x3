@@ -422,19 +422,17 @@ static inline void tegra_dc_dsi_debug_create(struct tegra_dc_dsi_data *dsi)
 
 static inline void tegra_dsi_clk_enable(struct tegra_dc_dsi_data *dsi)
 {
-	if (!tegra_is_clk_enabled(dsi->dsi_clk)) {
+	if (!tegra_is_clk_enabled(dsi->dsi_clk))
 		clk_prepare_enable(dsi->dsi_clk);
-		clk_prepare_enable(dsi->dsi_fixed_clk);
-	}
+
 	tegra_mipi_cal_clk_enable(dsi->mipi_cal);
 }
 
 static inline void tegra_dsi_clk_disable(struct tegra_dc_dsi_data *dsi)
 {
-	if (tegra_is_clk_enabled(dsi->dsi_clk)) {
+	if (tegra_is_clk_enabled(dsi->dsi_clk))
 		clk_disable_unprepare(dsi->dsi_clk);
-		clk_disable_unprepare(dsi->dsi_fixed_clk);
-	}
+
 	tegra_mipi_cal_clk_disable(dsi->mipi_cal);
 }
 
@@ -2945,6 +2943,7 @@ int tegra_dsi_read_data(struct tegra_dc *dc,
 
 	mutex_lock(&dsi->lock);
 	tegra_dc_io_start(dc);
+	clk_prepare_enable(dsi->dsi_fixed_clk);
 
 	init_status = tegra_dsi_prepare_host_transmission(
 				dc, dsi, DSI_LP_OP_WRITE);
@@ -3001,6 +3000,7 @@ fail:
 	err = tegra_dsi_restore_state(dc, dsi, init_status);
 	if (err < 0)
 		dev_err(&dc->ndev->dev, "Failed to restore prev state\n");
+	clk_disable_unprepare(dsi->dsi_fixed_clk);
 	tegra_dc_io_end(dc);
 	mutex_unlock(&dsi->lock);
 	return err;
@@ -3017,6 +3017,7 @@ int tegra_dsi_panel_sanity_check(struct tegra_dc *dc,
 			DSI_CMD_SHORT(0x05, 0x0, 0x0);
 
 	tegra_dc_io_start(dc);
+	clk_prepare_enable(dsi->dsi_fixed_clk);
 
 	init_status = tegra_dsi_prepare_host_transmission(
 					dc, dsi, DSI_LP_OP_WRITE);
@@ -3064,6 +3065,7 @@ fail:
 	err = tegra_dsi_restore_state(dc, dsi, init_status);
 	if (err < 0)
 		dev_err(&dc->ndev->dev, "Failed to restore prev state\n");
+	clk_disable_unprepare(dsi->dsi_fixed_clk);
 	tegra_dc_io_end(dc);
 	return err;
 }
@@ -3336,8 +3338,11 @@ static void __tegra_dc_dsi_init(struct tegra_dc *dc)
 
 	tegra_dsi_init_sw(dc, dsi);
 
-	if (!dsi->mipi_cal)
+	if (!dsi->mipi_cal) {
 		dsi->mipi_cal = tegra_mipi_cal_init_sw(dc);
+		if (PTR_ERR(dsi->mipi_cal) < 0)
+			dsi->mipi_cal = NULL;
+	}
 }
 
 static int tegra_dc_dsi_cp_p_cmd(struct tegra_dsi_cmd *src,
