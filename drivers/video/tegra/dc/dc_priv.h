@@ -24,6 +24,7 @@
 #ifndef CREATE_TRACE_POINTS
 # include <trace/events/display.h>
 #endif
+#include <mach/powergate.h>
 
 #ifdef CONFIG_TEGRA_DC_CMU
 	struct tegra_dc_cmu		cmu;
@@ -199,6 +200,23 @@ static inline unsigned long tegra_dc_clk_get_rate(struct tegra_dc *dc)
 #endif
 }
 
+#ifdef CONFIG_ARCH_TEGRA_11x_SOC
+static inline void tegra_dc_powergate_locked(struct tegra_dc *dc)
+{
+	if (tegra_powergate_is_powered(dc->powergate_id))
+		tegra_powergate_partition(dc->powergate_id);
+}
+
+static inline void tegra_dc_unpowergate_locked(struct tegra_dc *dc)
+{
+	if (!tegra_powergate_is_powered(dc->powergate_id))
+		tegra_unpowergate_partition(dc->powergate_id);
+}
+#else
+static inline void tegra_dc_powergate_locked(struct tegra_dc *dc) { }
+static inline void tegra_dc_unpowergate_locked(struct tegra_dc *dc) { }
+#endif
+
 extern struct tegra_dc_out_ops tegra_dc_rgb_ops;
 extern struct tegra_dc_out_ops tegra_dc_hdmi_ops;
 extern struct tegra_dc_out_ops tegra_dc_dsi_ops;
@@ -235,9 +253,10 @@ void tegra_dc_clear_bandwidth(struct tegra_dc *dc);
 void tegra_dc_program_bandwidth(struct tegra_dc *dc, bool use_new);
 int tegra_dc_set_dynamic_emc(struct tegra_dc_win *windows[], int n);
 
-/* defined in mode.c, used in dc.c */
+/* defined in mode.c, used in dc.c and window.c */
 int tegra_dc_program_mode(struct tegra_dc *dc, struct tegra_dc_mode *mode);
 int tegra_dc_calc_refresh(const struct tegra_dc_mode *m);
+void tegra_dc_update_mode(struct tegra_dc *dc);
 
 /* defined in clock.c, used in dc.c, dsi.c and hdmi.c */
 void tegra_dc_setup_clk(struct tegra_dc *dc, struct clk *clk);
@@ -257,6 +276,7 @@ void tegra_dc_trigger_windows(struct tegra_dc *dc);
 void tegra_dc_set_color_control(struct tegra_dc *dc);
 #ifdef CONFIG_TEGRA_DC_CMU
 void tegra_dc_cmu_enable(struct tegra_dc *dc, bool cmu_enable);
+int tegra_dc_update_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu);
 #endif
 
 #endif

@@ -861,6 +861,7 @@ static void tegra_dc_hdmi_detect_worker(struct work_struct *work)
 		container_of(to_delayed_work(work), struct tegra_dc_hdmi_data, work);
 	struct tegra_dc *dc = hdmi->dc;
 
+	tegra_dc_unpowergate_locked(hdmi->dc);
 #ifdef CONFIG_FRAMEBUFFER_CONSOLE
 	/* Set default videomode on dc before enabling it*/
 	tegra_dc_set_default_videomode(dc);
@@ -868,11 +869,13 @@ static void tegra_dc_hdmi_detect_worker(struct work_struct *work)
 	tegra_dc_enable(dc);
 	msleep(5);
 	if (!tegra_dc_hdmi_detect(dc)) {
+		dc->connected = false;
 		tegra_dc_disable(dc);
+
 		tegra_fb_update_monspecs(dc->fb, NULL, NULL);
 
-		dc->connected = false;
 		tegra_dc_ext_process_hotplug(dc->ndev->id);
+		tegra_dc_powergate_locked(hdmi->dc);
 	}
 }
 
@@ -1432,11 +1435,10 @@ int tegra_hdmi_setup_hda_presence()
 				     HDMI_NV_PDISP_SOR_AUDIO_HDA_PRESENSE_0);
 
 		tegra_dc_hdmi_setup_eld_buff(hdmi->dc);
+		return 0;
 	}
-	else
-		return -ENODEV;
+	return -ENODEV;
 
-	return 0;
 }
 EXPORT_SYMBOL(tegra_hdmi_setup_hda_presence);
 #endif
@@ -1922,6 +1924,11 @@ void tegra_dc_put_edid(struct tegra_dc_edid *edid)
 	tegra_edid_put_data(edid);
 }
 EXPORT_SYMBOL(tegra_dc_put_edid);
+
+struct tegra_dc *tegra_dc_hdmi_get_dc(struct tegra_dc_hdmi_data *hdmi)
+{
+	return hdmi ? hdmi->dc : NULL;
+}
 
 #ifdef CONFIG_MACH_X3
 void hdmi_common_send_uevent(char *buf)

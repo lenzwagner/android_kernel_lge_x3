@@ -114,6 +114,8 @@ struct tegra_dc {
 	int				new_emc_clk_rate;
 	struct tegra_dc_shift_clk_div	shift_clk_div;
 
+	u32				powergate_id;
+
 	bool				connected;
 	bool				enabled;
 	bool				suspended;
@@ -181,6 +183,8 @@ struct tegra_dc {
 	u32				one_shot_delay_ms;
 	struct delayed_work		one_shot_work;
 	s64				frame_end_timestamp;
+
+	bool				mode_dirty;
 };
 
 #endif

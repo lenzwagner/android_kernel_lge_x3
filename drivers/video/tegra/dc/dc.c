@@ -517,6 +517,17 @@ static void _dump_regs(struct tegra_dc *dc, void *data,
 	DUMP_REG(DC_COM_PM1_CONTROL);
 	DUMP_REG(DC_COM_PM1_DUTY_CYCLE);
 	DUMP_REG(DC_DISP_SD_CONTROL);
+#if !defined(CONFIG_ARCH_TEGRA_2x_SOC) && !defined(CONFIG_ARCH_TEGRA_3x_SOC)
+	DUMP_REG(DC_COM_CMU_CSC_KRR);
+	DUMP_REG(DC_COM_CMU_CSC_KGR);
+	DUMP_REG(DC_COM_CMU_CSC_KBR);
+	DUMP_REG(DC_COM_CMU_CSC_KRG);
+	DUMP_REG(DC_COM_CMU_CSC_KGG);
+	DUMP_REG(DC_COM_CMU_CSC_KBR);
+	DUMP_REG(DC_COM_CMU_CSC_KRB);
+	DUMP_REG(DC_COM_CMU_CSC_KGB);
+	DUMP_REG(DC_COM_CMU_CSC_KBB);
+#endif
 
 	tegra_dc_io_end(dc);
 	tegra_dc_release_dc_out(dc);
@@ -878,7 +889,7 @@ void tegra_dc_get_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu)
 }
 EXPORT_SYMBOL(tegra_dc_get_cmu);
 
-int tegra_dc_update_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu)
+int _tegra_dc_update_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu)
 {
 	u32 val;
 
@@ -907,20 +918,32 @@ int tegra_dc_update_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu)
 
 		tegra_dc_set_cmu(dc, &dc->cmu);
 	}
+	tegra_dc_set_color_control(dc);
 
 	return 0;
+}
+
+int tegra_dc_update_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu)
+{
+	int ret;
+
+	mutex_lock(&dc->lock);
+	tegra_dc_io_start(dc);
+	tegra_dc_hold_dc_out(dc);
+
+	ret = _tegra_dc_update_cmu(dc, cmu);
+
+	tegra_dc_release_dc_out(dc);
+	tegra_dc_io_end(dc);
+	mutex_unlock(&dc->lock);
+
+	return ret;
 }
 EXPORT_SYMBOL(tegra_dc_update_cmu);
 
 void tegra_dc_cmu_enable(struct tegra_dc *dc, bool cmu_enable)
 {
-	clk_enable(dc->clk);
-	tegra_dc_io_start(dc);
-	dc->pdata->cmu_enable = cmu_enable;
 	tegra_dc_update_cmu(dc, &dc->cmu);
-	tegra_dc_set_color_control(dc);
-	tegra_dc_io_end(dc);
-	clk_disable(dc->clk);
 }
 #else
 #define tegra_dc_cache_cmu(dst_cmu, src_cmu)
@@ -1126,6 +1149,13 @@ static void tegra_dc_set_out(struct tegra_dc *dc, struct tegra_dc_out *out)
 		dc->out_ops = NULL;
 		break;
 	}
+
+#ifdef CONFIG_ARCH_TEGRA_11x_SOC
+	if (out->type == TEGRA_DC_OUT_HDMI)
+		dc->powergate_id = TEGRA_POWERGATE_DISB;
+	else
+		dc->powergate_id = TEGRA_POWERGATE_DISA;
+#endif
 
 	if (dc->out_ops && dc->out_ops->init)
 		dc->out_ops->init(dc);
@@ -1559,6 +1589,10 @@ static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 	else
 		tegra_dc_continuous_irq(dc, status);
 
+	/* update video mode if it has changed since the last frame */
+	if (status & (FRAME_END_INT | V_BLANK_INT))
+		tegra_dc_update_mode(dc);
+
 	return IRQ_HANDLED;
 #else /* CONFIG_TEGRA_FPGA_PLATFORM */
 	return IRQ_NONE;
@@ -1728,9 +1762,9 @@ static int tegra_dc_init(struct tegra_dc *dc)
 
 #ifdef CONFIG_TEGRA_DC_CMU
 	if (dc->pdata->cmu)
-		tegra_dc_update_cmu(dc, dc->pdata->cmu);
+		_tegra_dc_update_cmu(dc, dc->pdata->cmu);
 	else
-		tegra_dc_update_cmu(dc, &default_cmu);
+		_tegra_dc_update_cmu(dc, &default_cmu);
 #endif
 	tegra_dc_set_color_control(dc);
 	for (i = 0; i < DC_N_WINDOWS; i++) {
@@ -1818,6 +1852,8 @@ static int tegra_dc_init(struct tegra_dc *dc)
 static bool _tegra_dc_controller_enable(struct tegra_dc *dc)
 {
 	int failed_init = 0;
+
+	tegra_dc_unpowergate_locked(dc);
 
 	if (dc->out->enable)
 		dc->out->enable(&dc->ndev->dev);
@@ -2200,6 +2236,24 @@ static ssize_t switch_modeset_print_mode(struct switch_dev *sdev, char *buf)
 }
 #endif
 
+static void tegra_dc_add_modes(struct tegra_dc *dc)
+{
+	struct fb_monspecs specs;
+	int i;
+
+	memset(&specs, 0, sizeof(specs));
+	specs.max_x = dc->mode.h_active * 1000;
+	specs.max_y = dc->mode.v_active * 1000;
+	specs.modedb_len = dc->out->n_modes;
+	specs.modedb = kzalloc(specs.modedb_len *
+		sizeof(struct fb_videomode), GFP_KERNEL);
+	for (i = 0; i < dc->out->n_modes; i++)
+		tegra_dc_to_fb_videomode(&specs.modedb[i],
+			&dc->out->modes[i]);
+	tegra_fb_update_monspecs(dc->fb, &specs, NULL);
+	kfree(specs.modedb);
+}
+
 static int tegra_dc_probe(struct platform_device *ndev)
 {
 	struct tegra_dc *dc;
@@ -2402,6 +2456,9 @@ static int tegra_dc_probe(struct platform_device *ndev)
 			dc->fb = NULL;
 	}
 
+	if (dc->out && dc->out->n_modes)
+		tegra_dc_add_modes(dc);
+
 	if (dc->out && dc->out->hotplug_init)
 		dc->out->hotplug_init(&ndev->dev);
 
@@ -2409,6 +2466,12 @@ static int tegra_dc_probe(struct platform_device *ndev)
 		dc->out_ops->detect(dc);
 	else
 		dc->connected = true;
+
+#ifdef CONFIG_ARCH_TEGRA_11x_SOC
+	/* Powergate display module when it's unconnected. */
+	if (!tegra_dc_get_connected(dc))
+		tegra_dc_powergate_locked(dc);
+#endif
 
 	tegra_dc_create_sysfs(&dc->ndev->dev);
 
