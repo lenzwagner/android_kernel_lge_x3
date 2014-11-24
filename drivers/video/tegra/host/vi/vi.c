@@ -52,7 +52,6 @@ static int __devinit vi_probe(struct platform_device *dev)
 	return 0;
 
 camera_register_fail:
-	kfree(tegra_vi);
 	return err;
 }
 
