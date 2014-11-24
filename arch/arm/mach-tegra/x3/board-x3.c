@@ -234,10 +234,10 @@ static struct platform_device tegra_rtc_device = {
 	.num_resources = ARRAY_SIZE(tegra_rtc_resources),
 };
 
-static struct platform_device tegra_camera = {
-	.name = "tegra_camera",
-	.id = -1,
-};
+//static struct platform_device tegra_camera = {
+//	.name = "tegra_camera",
+//	.id = -1,
+//};
 
 static struct resource ram_console_resources[] = {
 	{
@@ -374,7 +374,7 @@ static struct platform_device *x3_devices[] __initdata = {
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
 #endif
-	&tegra_camera,
+//	&tegra_camera,
 	&tegra_spi_device4,	
 #if defined(CONFIG_MACH_RGB_CONVERTOR_SPI)	
 	&tegra_spi_device5, 

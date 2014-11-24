@@ -1,9 +1,9 @@
 /*
- * drivers/video/tegra/host/mpe/mpe.h
+ * drivers/video/tegra/host/vi/vi.h
  *
- * Tegra Graphics Host MPE
+ * Tegra Graphics Host VI
  *
- * Copyright (c) 2011-2013, NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2012-2013, NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -18,19 +18,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __NVHOST_MPE_MPE_H
-#define __NVHOST_MPE_MPE_H
+#ifndef __NVHOST_VI_H__
+#define __NVHOST_VI_H__
 
-struct platform_device;
-struct nvhost_hwctx_handler;
-struct nvhost_channel;
-struct nvhost_hwctx;
+#include "camera_priv_defs.h"
 
-struct nvhost_hwctx_handler *nvhost_mpe_ctxhandler_init(u32 syncpt,
-	u32 waitbase, struct nvhost_channel *ch);
-int nvhost_mpe_prepare_power_off(struct platform_device *dev);
-int nvhost_mpe_read_reg(struct platform_device *dev,
-	struct nvhost_channel *channel, struct nvhost_hwctx *hwctx,
-	u32 offset, u32 *value);
+struct vi {
+	struct tegra_camera *camera;
+	struct platform_device *ndev;
+};
 
 #endif
