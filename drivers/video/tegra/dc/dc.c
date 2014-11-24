@@ -1592,12 +1592,6 @@ static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 	u32 val;
 	int need_disable = 0;
 
-	mutex_lock(&dc->lock);
-	if (!dc->enabled || !tegra_dc_is_powered(dc)) {
-		mutex_unlock(&dc->lock);
-		return IRQ_HANDLED;
-	}
-
 	if (!nvhost_module_powered_ext(dc->ndev)) {
 		WARN(1, "IRQ when DC not powered!\n");
 		tegra_dc_io_start(dc);
