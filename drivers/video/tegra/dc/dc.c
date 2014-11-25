@@ -802,7 +802,7 @@ bool tegra_dc_hpd(struct tegra_dc *dc)
 		if (dc->out->hotplug_state == -1) /* force off */
 			return false;
 	}
-	level = gpio_get_value_cansleep(dc->out->hotplug_gpio);
+	level = gpio_get_value(dc->out->hotplug_gpio);
 
 	sense = dc->out->flags & TEGRA_DC_OUT_HOTPLUG_MASK;
 
@@ -2312,11 +2312,14 @@ static void tegra_dc_add_modes(struct tegra_dc *dc)
 	specs.modedb_len = dc->out->n_modes;
 	specs.modedb = kzalloc(specs.modedb_len *
 		sizeof(struct fb_videomode), GFP_KERNEL);
+	if (specs.modedb == NULL) {
+		dev_err(&dc->ndev->dev, "modedb allocation failed\n");
+		return;
+	}
 	for (i = 0; i < dc->out->n_modes; i++)
 		tegra_dc_to_fb_videomode(&specs.modedb[i],
 			&dc->out->modes[i]);
 	tegra_fb_update_monspecs(dc->fb, &specs, NULL);
-	kfree(specs.modedb);
 }
 
 static int tegra_dc_probe(struct platform_device *ndev)
@@ -2377,7 +2380,12 @@ static int tegra_dc_probe(struct platform_device *ndev)
 		dc->win_syncpt[0] = NVSYNCPT_DISP0_A;
 		dc->win_syncpt[1] = NVSYNCPT_DISP0_B;
 		dc->win_syncpt[2] = NVSYNCPT_DISP0_C;
-		dc->powergate_id = TEGRA_POWERGATE_DISA;
+		/* This code assumes DISB depends on DISA. DC's powergate
+		 * code will have to change if dependency is removed */
+		if (dc->out && dc->out->type == TEGRA_DC_OUT_HDMI)
+			dc->powergate_id = TEGRA_POWERGATE_DISB;
+		else
+			dc->powergate_id = TEGRA_POWERGATE_DISA;
 	} else if (TEGRA_DISPLAY2_BASE == res->start) {
 		dc->vblank_syncpt = NVSYNCPT_VBLANK1;
 		dc->win_syncpt[0] = NVSYNCPT_DISP1_A;
@@ -2531,8 +2539,7 @@ static int tegra_dc_probe(struct platform_device *ndev)
 	if (dc->out && dc->out->n_modes)
 		tegra_dc_add_modes(dc);
 
-	if (dc->out && dc->out->hotplug_init)
-		dc->out->hotplug_init(&ndev->dev);
+	tegra_dc_hotplug_init(dc);
 
 	if (dc->out_ops && dc->out_ops->detect)
 		dc->out_ops->detect(dc);
@@ -2636,14 +2643,8 @@ static int tegra_dc_suspend(struct platform_device *ndev, pm_message_t state)
 		dc->suspended = true;
 	}
 
-	if (dc->out && dc->out->postsuspend) {
+	if (dc->out && dc->out->postsuspend)
 		dc->out->postsuspend();
-		if (dc->out->type && dc->out->type == TEGRA_DC_OUT_HDMI)
-			/*
-			 * avoid resume event due to voltage falling
-			 */
-			msleep(100);
-	}
 
 	mutex_unlock(&dc->lock);
 
@@ -2668,8 +2669,10 @@ static int tegra_dc_resume(struct platform_device *ndev)
 		_tegra_dc_enable(dc);
 	}
 
-	if (dc->out && dc->out->hotplug_init)
-		dc->out->hotplug_init(&ndev->dev);
+#ifdef CONFIG_MACH_X3
+	if (dc->out && dc->out->prepoweron) /* wakeup time from LP0 ** Nvidia patch */
+		dc->out->prepoweron();
+#endif
 
 	if (dc->out_ops && dc->out_ops->resume)
 		dc->out_ops->resume(dc);
@@ -2687,7 +2690,6 @@ static void tegra_dc_shutdown(struct platform_device *ndev)
 	if (!dc || !dc->enabled)
 		return;
 
-	tegra_dc_blank(dc);
 	tegra_dc_disable(dc);
 }
 

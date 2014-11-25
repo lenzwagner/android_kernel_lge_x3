@@ -336,9 +336,11 @@ static int tegra_fb_pan_display(struct fb_var_screeninfo *var,
 	/*
 	 * Do nothing if display parameters are same as current values.
 	 */
+#if defined(CONFIG_ANDROID)
 	if ((var->xoffset == tegra_fb->curr_xoffset) &&
 	    (var->yoffset == tegra_fb->curr_yoffset))
 		return 0;
+#endif
 
 	if (!tegra_fb->win->cur_handle) {
 		flush_start = info->screen_base + (var->yoffset * info->fix.line_length);
@@ -557,7 +559,14 @@ void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 	event.info = fb_info->info;
 #ifdef CONFIG_FRAMEBUFFER_CONSOLE
 	console_lock();
+	if ((fb_info->win->dc->out != NULL) &&
+	    (fb_info->win->dc->out->type == TEGRA_DC_OUT_HDMI))
+		tegra_fb_blank(FB_BLANK_POWERDOWN, fb_info->info);
+	/* fb_call chain is blocking call */
 	fb_notifier_call_chain(FB_EVENT_NEW_MODELIST, &event);
+	if ((fb_info->win->dc->out != NULL) &&
+	    (fb_info->win->dc->out->type == TEGRA_DC_OUT_HDMI))
+		tegra_fb_blank(FB_BLANK_UNBLANK, fb_info->info);
 	console_unlock();
 #else
 	fb_notifier_call_chain(FB_EVENT_NEW_MODELIST, &event);
