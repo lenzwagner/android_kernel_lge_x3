@@ -37,6 +37,182 @@ static struct clock_data clock_init[] = {
 	{ CAMERA_SCLK, "sclk", true, 80000000},
 };
 
+#ifdef CONFIG_MACH_X3
+#include <linux/cpufreq.h>
+#include <linux/pm_qos.h>
+
+static struct tegra_camera *tegra_camera_dev;
+
+//#define POWER_SAVE_REC_CPU_USER_CAP_RATE	640000
+#define POWER_SAVE_BOOST_STEP			1
+#define POWER_SAVE_CPU_FREQ_MIN			640000
+#define POWER_SAVE_CPU_FREQ_MAX			640000
+#define POWER_SAVE_MIN_CPUS			2
+#define POWER_SAVE_MAX_CPUS			2
+
+static unsigned long boost_step_default;
+
+static inline void tegra_camera_do_power_save(struct tegra_camera *dev)
+{
+#if 0
+	int preview, rec;
+	
+	pr_info("%s \n", __func__);
+
+	preview = dev->power_save_preview;
+	rec = dev->power_save_rec;
+
+	if (!dev->power_save && (preview || rec)) {
+		boost_step_default = cpufreq_interactive_get_boost_step();
+		dev->power_save = true;
+	}
+
+	if (!dev->power_save)
+		return;
+
+	if (preview && rec) {    
+		pr_info("%s : when preview && rec \n", __func__);
+		cpufreq_interactive_set_boost_step(POWER_SAVE_BOOST_STEP);
+
+		cpufreq_set_max_freq(NULL, POWER_SAVE_CPU_FREQ_MAX);
+		if ((dev->xres == 1280 && dev->yres == 720) ||
+			(dev->xres == 1440 && dev->yres == 1080) ||
+				(dev->xres == 1920 && dev->yres == 1080)) {
+			cpufreq_set_min_freq(NULL, POWER_SAVE_CPU_FREQ_MIN);
+#ifndef CONFIG_CPUQUIET_FRAMEWORK
+			tegra_auto_hotplug_set_min_cpus(POWER_SAVE_MIN_CPUS);
+			tegra_auto_hotplug_set_max_cpus(POWER_SAVE_MAX_CPUS);
+#endif
+		}
+	} else if (preview && !rec) {
+		pr_info("%s : preview && !rec \n", __func__);
+
+		cpufreq_interactive_set_boost_step(POWER_SAVE_BOOST_STEP);
+#if 0 // kwanghee.choi 20120912 Vu1.0 Global fix the frame drop on Camera by setting full CPU clock (start)
+		cpufreq_set_min_freq(NULL, POWER_SAVE_CPU_FREQ_MIN);
+		cpufreq_set_max_freq(NULL, PM_QOS_CPU_FREQ_MAX_DEFAULT_VALUE);
+#ifndef CONFIG_CPUQUIET_FRAMEWORK
+		tegra_auto_hotplug_set_min_cpus(0);
+		tegra_auto_hotplug_set_max_cpus(0);
+#endif
+#else
+		cpufreq_set_min_freq(NULL, PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
+		cpufreq_set_max_freq(NULL, PM_QOS_CPU_FREQ_MAX_DEFAULT_VALUE);
+#ifndef CONFIG_CPUQUIET_FRAMEWORK
+		tegra_auto_hotplug_set_min_cpus(0);
+		tegra_auto_hotplug_set_max_cpus(0);
+#endif
+#endif // kwanghee.choi 20120912 Vu1.0 Global fix the frame drop on Camera by setting full CPU clock (end)
+	} else if (!preview && !rec) {
+		pr_info("%s : !preview && !rec \n", __func__);
+
+		cpufreq_interactive_set_boost_step(boost_step_default);
+
+		cpufreq_set_min_freq(NULL, PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
+		cpufreq_set_max_freq(NULL, PM_QOS_CPU_FREQ_MAX_DEFAULT_VALUE);
+#ifndef CONFIG_CPUQUIET_FRAMEWORK
+		tegra_auto_hotplug_set_min_cpus(0);
+		tegra_auto_hotplug_set_max_cpus(0);
+#endif
+
+		dev->power_save = false;
+	}
+#else
+	pr_info("%s: Test This Camera.\n", __func__);
+#endif
+}
+
+int tegra_camera_set_size(int xres, int yres)
+{
+	struct tegra_camera *camera = tegra_camera_dev;
+	if ((xres <= 0) || (yres <= 0))
+		return -EINVAL;
+
+	mutex_lock(&camera->tegra_camera_lock);
+	camera->xres = xres;
+	camera->yres = yres;
+	tegra_camera_do_power_save(camera);
+	mutex_unlock(&camera->tegra_camera_lock);
+
+	return 0;
+}
+
+static ssize_t tegra_camera_show_power_save_preview(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct tegra_camera *camera = dev_get_drvdata(dev);
+	return sprintf(buf, "%d\n", camera->power_save_preview);
+}
+
+static ssize_t tegra_camera_store_power_save_preview(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct tegra_camera *camera = dev_get_drvdata(dev);
+	int val, ret;
+
+	ret = sscanf(buf, "%d", &val);
+	if (!ret)
+		return ret;
+
+	mutex_lock(&camera->tegra_camera_lock);
+	if (val == 1 && !camera->power_save_preview)
+		camera->power_save_preview = true;
+	else if (val == 0 && camera->power_save_preview)
+		camera->power_save_preview = false;
+
+	tegra_camera_do_power_save(camera);
+	mutex_unlock(&camera->tegra_camera_lock);
+
+	return count;
+}
+
+static DEVICE_ATTR(power_save_preview, S_IRUGO | S_IWUSR | S_IRGRP | S_IWGRP,
+		   tegra_camera_show_power_save_preview,
+		   tegra_camera_store_power_save_preview);
+
+static ssize_t tegra_camera_show_power_save_rec(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct tegra_camera *camera = dev_get_drvdata(dev);
+	return sprintf(buf, "%d\n", camera->power_save_rec);
+}
+
+static ssize_t tegra_camera_store_power_save_rec(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct tegra_camera *camera = dev_get_drvdata(dev);
+	int val, ret;
+
+	ret = sscanf(buf, "%d", &val);
+	if (!ret)
+		return ret;
+
+	mutex_lock(&camera->tegra_camera_lock);
+	if (val == 1 && !camera->power_save_rec)
+		camera->power_save_rec = true;
+	else if (val == 0 && camera->power_save_rec)
+		camera->power_save_rec = false;
+
+	tegra_camera_do_power_save(camera);
+	mutex_unlock(&camera->tegra_camera_lock);
+
+	return count;
+}
+
+static DEVICE_ATTR(power_save_rec, S_IRUGO | S_IWUSR | S_IRGRP | S_IWGRP,
+		   tegra_camera_show_power_save_rec,
+		   tegra_camera_store_power_save_rec);
+
+bool tegra_camera_get_power_save_rec(void)
+{
+	if (tegra_camera_dev != NULL) {
+		return tegra_camera_dev->power_save_rec;
+	}
+	return false;
+}
+EXPORT_SYMBOL(tegra_camera_get_power_save_rec);
+#endif
+
 static long tegra_camera_ioctl(struct file *file,
 			       unsigned int cmd, unsigned long arg)
 {
@@ -268,6 +444,23 @@ struct tegra_camera *tegra_camera_register(struct platform_device *ndev)
 					__func__);
 		goto clk_get_fail;
 	}
+#endif
+
+#ifdef CONFIG_MACH_X3
+	tegra_camera_dev = camera;
+	camera->power_save = false;
+
+	ret = device_create_file(camera->dev, &dev_attr_power_save_preview);
+	if (ret < 0)
+		dev_warn(camera->dev,
+			 "%s: failed to add power_save_preview sysfs: %d\n",
+			 __func__, ret);
+
+	ret = device_create_file(camera->dev, &dev_attr_power_save_rec);
+	if (ret < 0)
+		dev_warn(camera->dev,
+			 "%s: failed to add power_save_rec sysfs: %d\n",
+			 __func__, ret);
 #endif
 
 	return camera;

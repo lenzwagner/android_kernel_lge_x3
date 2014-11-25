@@ -80,6 +80,14 @@ struct tegra_camera {
 #ifdef CONFIG_ARCH_TEGRA_11x_SOC
 	tegra_isomgr_handle isomgr_handle;
 #endif
+
+#ifdef CONFIG_MACH_X3
+	bool power_save;
+	bool power_save_preview;
+	bool power_save_rec;
+	int xres;
+	int yres;
+#endif
 };
 
 /*

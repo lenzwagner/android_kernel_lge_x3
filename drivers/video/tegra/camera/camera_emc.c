@@ -24,6 +24,8 @@ int tegra_camera_enable_emc(struct tegra_camera *camera)
 	clk_prepare_enable(camera->clock[CAMERA_EMC_CLK].clk);
 #ifdef CONFIG_ARCH_TEGRA_2x_SOC
 	clk_set_rate(camera->clock[TEGRA_CAMERA_EMC_CLK].clk, 300000000);
+#elif defined(CONFIG_MACH_X3)
+	clk_set_rate(camera->clock[TEGRA_CAMERA_EMC_CLK].clk, 533000000);
 #endif
 	return ret;
 }

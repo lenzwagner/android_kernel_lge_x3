@@ -2,6 +2,7 @@
  * include/linux/tegra_camera.h
  *
  * Copyright (C) 2010 Google, Inc.
+ * Copyright (c) 2010-2012, NVIDIA Corporation.  All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -48,6 +49,11 @@ enum StereoCameraMode {
 	StereoCameraMode_Force32 = 0x7FFFFFFF
 };
 
+struct tegra_camera_platform_data {
+	bool limit_3d_emc_clk;
+};
+
+int is_tegra_camera_on(void);
 
 #define TEGRA_CAMERA_IOCTL_ENABLE		_IOWR('i', 1, uint)
 #define TEGRA_CAMERA_IOCTL_DISABLE		_IOWR('i', 2, uint)
@@ -55,4 +61,5 @@ enum StereoCameraMode {
 	_IOWR('i', 3, struct tegra_camera_clk_info)
 #define TEGRA_CAMERA_IOCTL_RESET		_IOWR('i', 4, uint)
 
+int tegra_camera_set_size(int xres, int yres);
 #endif
