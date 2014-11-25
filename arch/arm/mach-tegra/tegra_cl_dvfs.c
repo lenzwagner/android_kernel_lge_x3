@@ -188,7 +188,6 @@ struct tegra_cl_dvfs {
 	u8				safe_output;
 	u8				tune_high_out_start;
 	u8				tune_high_out_min;
-	u8				cold_out_min;
 	u8				minimax_output;
 	u8				thermal_out_caps[MAX_THERMAL_LIMITS];
 	u8				thermal_out_floors[MAX_THERMAL_LIMITS];
