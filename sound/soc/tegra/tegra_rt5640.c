@@ -2,7 +2,7 @@
  * tegra_rt5640.c - Tegra machine ASoC driver for boards using ALC5640 codec.
  *
  * Author: Johnny Qiu <joqiu@nvidia.com>
- * Copyright (C) 2011-2012, NVIDIA, Inc.
+ * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * Based on code copyright/by:
  *
@@ -36,6 +36,7 @@
 #include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
 #include <linux/delay.h>
+#include <linux/edp.h>
 #ifdef CONFIG_SWITCH
 #include <linux/switch.h>
 #endif
@@ -65,6 +66,11 @@
 #define GPIO_EXT_MIC_EN BIT(3)
 #define GPIO_HP_DET     BIT(4)
 
+#define DAI_LINK_HIFI		0
+#define DAI_LINK_SPDIF		1
+#define DAI_LINK_BTSCO		2
+#define NUM_DAI_LINKS	3
+
 struct tegra30_i2s *i2s_tfa = NULL;
 struct snd_soc_codec *codec_rt;
 
@@ -74,6 +80,8 @@ struct tegra_rt5640 {
 	struct regulator *spk_reg;
 	struct regulator *dmic_reg;
 	struct regulator *cdc_en;
+	struct snd_soc_card *pcard;
+	struct edp_client *spk_edp_client;
 	int gpio_requested;
 #ifdef CONFIG_SWITCH
 	int jack_status;
@@ -154,11 +162,29 @@ static int tegra_rt5640_hw_params(struct snd_pcm_substream *substream,
 		return err;
 	}
 
-	err = snd_soc_dai_set_sysclk(codec_dai, 0, rate, SND_SOC_CLOCK_IN);
-	if (err < 0) {
-		dev_err(card->dev, "codec_dai clock not set\n");
-		return err;
+	if (pdata->i2s_param[HIFI_CODEC].is_i2s_master) {
+		err = snd_soc_dai_set_sysclk(codec_dai, 0, rate,
+				SND_SOC_CLOCK_IN);
+		if (err < 0) {
+			dev_err(card->dev, "codec_dai clock not set\n");
+			return err;
+		}
+	} else {
+		err = snd_soc_dai_set_pll(codec_dai, RT5640_SCLK_S_PLL1,
+				RT5640_PLL1_S_MCLK, rate, 512 * srate);
+		if (err < 0) {
+			dev_err(card->dev, "codec_dai pll not set\n");
+			return err;
+		}
+
+		err = snd_soc_dai_set_sysclk(codec_dai, RT5640_SCLK_S_PLL1,
+				512 * srate, SND_SOC_CLOCK_IN);
+		if (err < 0) {
+			dev_err(card->dev, "codec_dai clock not set\n");
+			return err;
+		}
 	}
+
 	if(machine_is_roth()) {
 		if(initTfa == 1) {
 			i2s_tfa = i2s;
@@ -354,7 +380,8 @@ static int tegra_rt5640_jack_notifier(struct notifier_block *self,
 	if (jack == &tegra_rt5640_hp_jack) {
 		if (action) {
 			/* Enable ext mic; enable signal is active-low */
-			gpio_direction_output(pdata->gpio_ext_mic_en, 0);
+			if (gpio_is_valid(pdata->gpio_ext_mic_en))
+				gpio_direction_output(pdata->gpio_ext_mic_en, 0);
 			if (!strncmp(machine->pdata->codec_name, "rt5639", 6))
 				status_jack = rt5639_headset_detect(codec, 1);
 			else if (!strncmp(machine->pdata->codec_name, "rt5640",
@@ -376,7 +403,8 @@ static int tegra_rt5640_jack_notifier(struct notifier_block *self,
 			}
 		} else {
 			/* Disable ext mic; enable signal is active-low */
-			gpio_direction_output(pdata->gpio_ext_mic_en, 1);
+			if (gpio_is_valid(pdata->gpio_ext_mic_en))
+				gpio_direction_output(pdata->gpio_ext_mic_en, 1);
 			if (!strncmp(machine->pdata->codec_name, "rt5639", 6))
 				rt5639_headset_detect(codec, 0);
 			else if (!strncmp(machine->pdata->codec_name, "rt5640",
@@ -419,6 +447,54 @@ static struct snd_soc_jack_pin tegra_rt5640_hp_jack_pins[] = {
 
 #endif
 
+static void tegra_speaker_edp_set_volume(struct snd_soc_codec *codec,
+					 int l_vol,
+					 int r_vol)
+{
+	snd_soc_update_bits(codec,
+			    RT5640_SPK_VOL,
+			    RT5640_L_VOL_MASK,
+			    l_vol << RT5640_L_VOL_SFT);
+	snd_soc_update_bits(codec,
+			    RT5640_SPK_VOL,
+			    RT5640_R_VOL_MASK,
+			    r_vol << RT5640_R_VOL_SFT);
+}
+
+static void tegra_speaker_throttle(unsigned int new_state,  void *priv_data)
+{
+	struct tegra_rt5640 *machine = priv_data;
+	struct snd_soc_card *card;
+	struct snd_soc_codec *codec;
+
+	if (!machine)
+		return;
+
+	card = machine->pcard;
+	codec = card->rtd[DAI_LINK_HIFI].codec;
+
+	/* set codec volume to reflect the new E-state */
+	switch (new_state) {
+	case TEGRA_SPK_EDP_NEG_1:
+		/* set codec voulme to 0dB (100%), E-1 state */
+		tegra_speaker_edp_set_volume(codec, 0x0, 0x0);
+		break;
+	case TEGRA_SPK_EDP_ZERO:
+		/* set codec volume to -16.5dB (78%), E0 state */
+		tegra_speaker_edp_set_volume(codec, 0x13, 0x13);
+		break;
+	case TEGRA_SPK_EDP_1:
+		/* turn off codec volume, -46.5 dB, E1 state */
+		tegra_speaker_edp_set_volume(codec, 0x27, 0x27);
+		break;
+	default:
+		pr_err("%s: New E-state %d don't support!\n",
+			__func__, new_state);
+		break;
+	}
+
+}
+
 static int tegra_rt5640_event_int_spk(struct snd_soc_dapm_widget *w,
 					struct snd_kcontrol *k, int event)
 {
@@ -426,6 +502,9 @@ static int tegra_rt5640_event_int_spk(struct snd_soc_dapm_widget *w,
 	struct snd_soc_card *card = dapm->card;
 	struct tegra_rt5640 *machine = snd_soc_card_get_drvdata(card);
 	struct tegra_asoc_platform_data *pdata = machine->pdata;
+	struct snd_soc_codec *codec = card->rtd[DAI_LINK_HIFI].codec;
+	unsigned int approved = TEGRA_SPK_EDP_NUM_STATES;
+	int ret;
 
 	if (machine->spk_reg) {
 		if (SND_SOC_DAPM_EVENT_ON(event)) {
@@ -449,6 +528,36 @@ static int tegra_rt5640_event_int_spk(struct snd_soc_dapm_widget *w,
 				Tfa9887_Powerdown(1);
 		}
 	}
+
+	if (machine->spk_edp_client == NULL)
+		goto err_null_spk_edp_client;
+
+	if (SND_SOC_DAPM_EVENT_ON(event)) {
+		ret = edp_update_client_request(machine->spk_edp_client,
+						TEGRA_SPK_EDP_NEG_1,
+						&approved);
+		if (ret || approved != TEGRA_SPK_EDP_NEG_1) {
+			if (approved == TEGRA_SPK_EDP_ZERO)
+				/* set codec volume to -16.5dB (78%),E0 state */
+				tegra_speaker_edp_set_volume(codec, 0x13, 0x13);
+			else if (approved == TEGRA_SPK_EDP_1)
+				/* turn off codec volume,-46.5 dB, E1 state */
+				tegra_speaker_edp_set_volume(codec, 0x27, 0x27);
+		} else {
+			/* set codec voulme to 0dB (100%), E-1 state */
+			tegra_speaker_edp_set_volume(codec, 0x0, 0x0);
+		}
+	} else {
+		ret = edp_update_client_request(machine->spk_edp_client,
+						TEGRA_SPK_EDP_1,
+						NULL);
+		if (ret) {
+			dev_err(card->dev,
+				"E+1 state transition failed\n");
+		}
+	}
+
+err_null_spk_edp_client:
 	if (!(machine->gpio_requested & GPIO_SPKR_EN))
 		return 0;
 
@@ -516,14 +625,14 @@ static int tegra_rt5640_event_ext_mic(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
-static const struct snd_soc_dapm_widget cardhu_dapm_widgets[] = {
+static const struct snd_soc_dapm_widget tegra_rt5640_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("Int Spk", tegra_rt5640_event_int_spk),
 	SND_SOC_DAPM_HP("Headphone Jack", tegra_rt5640_event_hp),
 	SND_SOC_DAPM_MIC("Mic Jack", tegra_rt5640_event_ext_mic),
 	SND_SOC_DAPM_MIC("Int Mic", tegra_rt5640_event_int_mic),
 };
 
-static const struct snd_soc_dapm_route cardhu_audio_map[] = {
+static const struct snd_soc_dapm_route tegra_rt5640_audio_map[] = {
 	{"Headphone Jack", NULL, "HPOR"},
 	{"Headphone Jack", NULL, "HPOL"},
 	{"Int Spk", NULL, "SPORP"},
@@ -541,7 +650,22 @@ static const struct snd_soc_dapm_route cardhu_audio_map[] = {
 	{"DMIC R2", NULL, "Int Mic"},
 };
 
-static const struct snd_kcontrol_new cardhu_controls[] = {
+static const struct snd_soc_dapm_route tegra_rt5640_no_micbias_audio_map[] = {
+	{"Headphone Jack", NULL, "HPOR"},
+	{"Headphone Jack", NULL, "HPOL"},
+	{"Int Spk", NULL, "SPORP"},
+	{"Int Spk", NULL, "SPORN"},
+	{"Int Spk", NULL, "SPOLP"},
+	{"Int Spk", NULL, "SPOLN"},
+	{"micbias1", NULL, "Mic Jack"},
+	{"IN2P", NULL, "micbias1"},
+	{"DMIC L1", NULL, "Int Mic"},
+	{"DMIC L2", NULL, "Int Mic"},
+	{"DMIC R1", NULL, "Int Mic"},
+	{"DMIC R2", NULL, "Int Mic"},
+};
+
+static const struct snd_kcontrol_new tegra_rt5640_controls[] = {
 	SOC_DAPM_PIN_SWITCH("Int Spk"),
 	SOC_DAPM_PIN_SWITCH("Headphone Jack"),
 	SOC_DAPM_PIN_SWITCH("Mic Jack"),
@@ -636,8 +760,8 @@ static int tegra_rt5640_init(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
-static struct snd_soc_dai_link tegra_rt5640_dai[] = {
-	{
+static struct snd_soc_dai_link tegra_rt5640_dai[NUM_DAI_LINKS] = {
+	[DAI_LINK_HIFI] = {
 		.name = "RT5640",
 		.stream_name = "RT5640 PCM",
 		.codec_name = "rt5640.4-001c",
@@ -647,7 +771,7 @@ static struct snd_soc_dai_link tegra_rt5640_dai[] = {
 		.init = tegra_rt5640_init,
 		.ops = &tegra_rt5640_ops,
 	},
-	{
+	[DAI_LINK_SPDIF] = {
 		.name = "SPDIF",
 		.stream_name = "SPDIF PCM",
 		.codec_name = "spdif-dit.0",
@@ -656,7 +780,7 @@ static struct snd_soc_dai_link tegra_rt5640_dai[] = {
 		.codec_dai_name = "dit-hifi",
 		.ops = &tegra_spdif_ops,
 	},
-	{
+	[DAI_LINK_BTSCO] = {
 		.name = "BT-SCO",
 		.stream_name = "BT SCO PCM",
 		.codec_name = "spdif-dit.1",
@@ -720,12 +844,12 @@ static struct snd_soc_card snd_soc_tegra_rt5640 = {
 	.resume_pre = tegra_rt5640_resume_pre,
 	.set_bias_level = tegra_rt5640_set_bias_level,
 	.set_bias_level_post = tegra_rt5640_set_bias_level_post,
-	.controls = cardhu_controls,
-	.num_controls = ARRAY_SIZE(cardhu_controls),
-	.dapm_widgets = cardhu_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(cardhu_dapm_widgets),
-	.dapm_routes = cardhu_audio_map,
-	.num_dapm_routes = ARRAY_SIZE(cardhu_audio_map),
+	.controls = tegra_rt5640_controls,
+	.num_controls = ARRAY_SIZE(tegra_rt5640_controls),
+	.dapm_widgets = tegra_rt5640_dapm_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(tegra_rt5640_dapm_widgets),
+	.dapm_routes = tegra_rt5640_audio_map,
+	.num_dapm_routes = ARRAY_SIZE(tegra_rt5640_audio_map),
 	.fully_routed = true,
 };
 
@@ -777,6 +901,8 @@ static __devinit int tegra_rt5640_driver_probe(struct platform_device *pdev)
 	struct snd_soc_card *card = &snd_soc_tegra_rt5640;
 	struct tegra_rt5640 *machine;
 	struct tegra_asoc_platform_data *pdata;
+	struct snd_soc_codec *codec;
+	struct edp_manager *battery_manager = NULL;
 	int ret;
 
 	pdata = pdev->dev.platform_data;
@@ -784,6 +910,14 @@ static __devinit int tegra_rt5640_driver_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "No platform data supplied\n");
 		return -EINVAL;
 	}
+
+	if (pdata->micbias_gpio_absent) {
+		card->dapm_routes =
+			tegra_rt5640_no_micbias_audio_map;
+		card->num_dapm_routes =
+			ARRAY_SIZE(tegra_rt5640_no_micbias_audio_map);
+	}
+
 	if (pdata->codec_name)
 		card->dai_link->codec_name = pdata->codec_name;
 
@@ -846,6 +980,7 @@ static __devinit int tegra_rt5640_driver_probe(struct platform_device *pdev)
 	}
 
 	machine->pdata = pdata;
+	machine->pcard = card;
 
 	ret = tegra_asoc_utils_init(&machine->util_data, &pdev->dev, card);
 	if (ret)
@@ -905,6 +1040,55 @@ static __devinit int tegra_rt5640_driver_probe(struct platform_device *pdev)
 		goto err_unregister_card;
 	}
 #endif
+
+
+	if (!pdata->edp_support)
+		return 0;
+
+	machine->spk_edp_client = devm_kzalloc(&pdev->dev,
+				sizeof(struct edp_client), GFP_KERNEL);
+	if (IS_ERR_OR_NULL(machine->spk_edp_client)) {
+		dev_err(&pdev->dev, "could not allocate edp client\n");
+		return 0;
+	}
+
+	strncpy(machine->spk_edp_client->name, "speaker", EDP_NAME_LEN - 1);
+	machine->spk_edp_client->name[EDP_NAME_LEN - 1] = '\0';
+	machine->spk_edp_client->states = pdata->edp_states;
+	machine->spk_edp_client->num_states = TEGRA_SPK_EDP_NUM_STATES;
+	machine->spk_edp_client->e0_index = TEGRA_SPK_EDP_ZERO;
+	machine->spk_edp_client->priority = EDP_MAX_PRIO + 2;
+	machine->spk_edp_client->throttle = tegra_speaker_throttle;
+	machine->spk_edp_client->private_data = machine;
+
+	battery_manager = edp_get_manager("battery");
+	if (!battery_manager) {
+		dev_err(&pdev->dev, "unable to get edp manager\n");
+	} else {
+		/* register speaker edp client */
+		ret = edp_register_client(battery_manager,
+			machine->spk_edp_client);
+		if (ret) {
+			dev_err(&pdev->dev, "unable to register edp client\n");
+				devm_kfree(&pdev->dev, machine->spk_edp_client);
+				machine->spk_edp_client = NULL;
+		}
+		codec = card->rtd[DAI_LINK_HIFI].codec;
+		/* set codec volume to -16.5dB (78%), E0 state */
+		tegra_speaker_edp_set_volume(codec, 0x13, 0x13);
+
+		/* request E0 */
+		ret = edp_update_client_request(machine->spk_edp_client,
+						TEGRA_SPK_EDP_ZERO,
+						NULL);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"unable to set E0 EDP state\n");
+			edp_unregister_client(machine->spk_edp_client);
+			devm_kfree(&pdev->dev, machine->spk_edp_client);
+			machine->spk_edp_client = NULL;
+		}
+	}
 
 	return 0;
 

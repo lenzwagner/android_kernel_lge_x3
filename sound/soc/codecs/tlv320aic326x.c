@@ -2214,8 +2214,7 @@ int aic3262_hw_params(struct snd_pcm_substream *substream,
 		value = value | 0xC0;
 		break;
 	default:
-		bclk_div = 0x04;
-		wclk_div = 0x20;
+		break;
 	}
 
 	mutex_lock(&aic3262->mutex);
@@ -2223,12 +2222,12 @@ int aic3262_hw_params(struct snd_pcm_substream *substream,
 	snd_soc_update_bits(codec, AIC3262_ASI1_CHNL_SETUP,
 				AIC3262_ASI1_CHNL_MASK, value);
 
-	snd_soc_update_bits(codec, AIC3262_ASI1_BCLK_N,
+	if (channels > 2) {
+		snd_soc_update_bits(codec, AIC3262_ASI1_BCLK_N,
 				AIC3262_ASI1_BCLK_N_MASK, bclk_div);
-
-	snd_soc_update_bits(codec, AIC3262_ASI1_WCLK_N,
+		snd_soc_update_bits(codec, AIC3262_ASI1_WCLK_N,
 				AIC3262_ASI1_WCLK_N_MASK, wclk_div);
-
+	}
 
 	val = snd_soc_read(codec, AIC3262_ASI1_BUS_FMT);
 	val = snd_soc_read(codec, AIC3262_ASI1_CHNL_SETUP);
@@ -2575,6 +2574,9 @@ static int aic3262_codec_probe(struct snd_soc_codec *codec)
 			AIC3262_HEADSET_IN_MASK, AIC3262_HEADSET_IN_MASK);
 		}
 	}
+
+	codec->dapm.idle_bias_off = 1;
+
 	/* Keep the reference voltage ON while in$
 	   STANDBY mode for fast power up */
 
@@ -2659,6 +2661,7 @@ static struct snd_soc_codec_driver soc_codec_driver_aic326x = {
 	.dapm_routes = aic3262_dapm_routes,
 	.num_dapm_routes = ARRAY_SIZE(aic3262_dapm_routes),
 	.set_bias_level = aic3262_set_bias_level,
+	.idle_bias_off = true,
 	.reg_cache_size = 0,
 	.reg_word_size = sizeof(u8),
 	.reg_cache_default = NULL,

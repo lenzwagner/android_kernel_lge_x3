@@ -6,8 +6,8 @@
  *
  * Based on code copyright/by:
  *
- * Copyright (c) 2009-2010, NVIDIA Corporation.
- * Copyright (c) 2012, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2009-2013, NVIDIA Corporation.
+ * Copyright (c) 2012-2013, NVIDIA CORPORATION. All rights reserved.
  * Scott Peterson <speterson@nvidia.com>
  *
  * Copyright (C) 2010 Google, Inc.
@@ -115,6 +115,9 @@ static int tegra30_i2s_show(struct seq_file *s, void *unused)
 		REG(TEGRA30_I2S_LCOEF_2_4_0),
 		REG(TEGRA30_I2S_LCOEF_2_4_1),
 		REG(TEGRA30_I2S_LCOEF_2_4_2),
+#ifndef CONFIG_ARCH_TEGRA_3x_SOC
+		REG(TEGRA30_I2S_SLOT_CTRL2),
+#endif
 	};
 #undef REG
 
@@ -578,15 +581,19 @@ static int tegra30_i2s_hw_params(struct snd_pcm_substream *substream,
 			bitcnt = (i2sclock / srate) - 1;
 			sym_bitclk = !(i2sclock % srate);
 #ifndef CONFIG_ARCH_TEGRA_3x_SOC
-			val = 0;
-			for (i = 0; i < params_channels(params); i++)
-				val |= (1 << i);
-			if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-				val = val <<
+			val = tegra30_i2s_read(i2s, TEGRA30_I2S_SLOT_CTRL2);
+
+			if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+				val &=
+				  ~TEGRA30_I2S_SLOT_CTRL2_TX_SLOT_ENABLES_MASK;
+				val |= ((1 << params_channels(params)) - 1) <<
 				  TEGRA30_I2S_SLOT_CTRL2_TX_SLOT_ENABLES_SHIFT;
-			else
-				val = val <<
+			} else {
+				val &=
+				  ~TEGRA30_I2S_SLOT_CTRL2_RX_SLOT_ENABLES_MASK;
+				val |= ((1 << params_channels(params)) - 1) <<
 				  TEGRA30_I2S_SLOT_CTRL2_RX_SLOT_ENABLES_SHIFT;
+			}
 			tegra30_i2s_write(i2s, TEGRA30_I2S_SLOT_CTRL2, val);
 #endif
 		} else {
@@ -853,6 +860,25 @@ static int tegra30_i2s_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
+static int tegra30_i2s_soft_reset(struct tegra30_i2s *i2s)
+{
+	int dcnt = 10;
+
+	i2s->reg_ctrl |= TEGRA30_I2S_CTRL_SOFT_RESET;
+	tegra30_i2s_write(i2s, TEGRA30_I2S_CTRL, i2s->reg_ctrl);
+
+	while ((tegra30_i2s_read(i2s, TEGRA30_I2S_CTRL) &
+		       TEGRA30_I2S_CTRL_SOFT_RESET) && dcnt--)
+		udelay(100);
+
+	/* Restore reg_ctrl to ensure if a concurrent playback/capture
+	   session was active it continues after SOFT_RESET */
+	i2s->reg_ctrl &= ~TEGRA30_I2S_CTRL_SOFT_RESET;
+	tegra30_i2s_write(i2s, TEGRA30_I2S_CTRL, i2s->reg_ctrl);
+
+	return (dcnt < 0) ? -ETIMEDOUT : 0;
+}
+
 static void tegra30_i2s_start_playback(struct tegra30_i2s *i2s)
 {
 	tegra30_ahub_enable_tx_fifo(i2s->txcif);
@@ -871,9 +897,24 @@ static void tegra30_i2s_stop_playback(struct tegra30_i2s *i2s)
 	if (i2s->playback_ref_count == 1) {
 		i2s->reg_ctrl &= ~TEGRA30_I2S_CTRL_XFER_EN_TX;
 		tegra30_i2s_write(i2s, TEGRA30_I2S_CTRL, i2s->reg_ctrl);
+		while (tegra30_ahub_tx_fifo_is_enabled(i2s->id) && dcnt--)
+			udelay(100);
+
+		dcnt = 10;
+		while (!tegra30_ahub_tx_fifo_is_empty(i2s->id) && dcnt--)
+			udelay(100);
+
+		/* In case I2S FIFO does not get empty do a soft reset of the
+		   I2S channel to prevent channel reversal in next session */
+		if (dcnt < 0) {
+			tegra30_i2s_soft_reset(i2s);
+
+			dcnt = 10;
+			while (!tegra30_ahub_tx_fifo_is_empty(i2s->id) &&
+			       dcnt--)
+				udelay(100);
+		}
 	}
-	while (!tegra30_ahub_tx_fifo_is_empty(i2s->id) && dcnt--)
-		udelay(100);
 }
 
 static void tegra30_i2s_start_capture(struct tegra30_i2s *i2s)
@@ -889,15 +930,28 @@ static void tegra30_i2s_stop_capture(struct tegra30_i2s *i2s)
 {
 	int dcnt = 10;
 	if (!i2s->is_call_mode_rec && (i2s->capture_ref_count == 1)) {
-		tegra30_ahub_disable_rx_fifo(i2s->rxcif);
 		i2s->reg_ctrl &= ~TEGRA30_I2S_CTRL_XFER_EN_RX;
 		tegra30_i2s_write(i2s, TEGRA30_I2S_CTRL, i2s->reg_ctrl);
 		while (tegra30_ahub_rx_fifo_is_enabled(i2s->id) && dcnt--)
 			udelay(100);
-	}
 
-	while (!tegra30_ahub_rx_fifo_is_empty(i2s->id) && dcnt--)
-		udelay(100);
+		dcnt = 10;
+		while (!tegra30_ahub_rx_fifo_is_empty(i2s->id) && dcnt--)
+			udelay(100);
+
+		/* In case I2S FIFO does not get empty do a soft reset of
+		   the I2S channel to prevent channel reversal in next capture
+		   session */
+		if (dcnt < 0) {
+			tegra30_i2s_soft_reset(i2s);
+
+			dcnt = 10;
+			while (!tegra30_ahub_rx_fifo_is_empty(i2s->id) &&
+			       dcnt--)
+				udelay(100);
+		}
+		tegra30_ahub_disable_rx_fifo(i2s->rxcif);
+	}
 }
 
 static int tegra30_i2s_trigger(struct snd_pcm_substream *substream, int cmd,
@@ -1231,9 +1285,10 @@ static int configure_dam(struct tegra30_i2s  *i2s, int out_channel,
 	if (!i2s->dam_ch_refcount)
 		i2s->dam_ifc = tegra30_dam_allocate_controller();
 
-	if (i2s->dam_ifc < 0)
+	if (i2s->dam_ifc < 0) {
+		pr_err("Error : Failed to allocate DAM controller\n");
 		return -ENOENT;
-
+	}
 	tegra30_dam_allocate_channel(i2s->dam_ifc, TEGRA30_DAM_CHIN0_SRC);
 	i2s->dam_ch_refcount++;
 	tegra30_dam_enable_clock(i2s->dam_ifc);
@@ -1308,7 +1363,7 @@ int tegra30_make_voice_call_connections(struct codec_config *codec_info,
 {
 	struct tegra30_i2s  *codec_i2s;
 	struct tegra30_i2s  *bb_i2s;
-	int reg;
+	int reg, ret;
 
 	codec_i2s = &i2scont[codec_info->i2s_id];
 	bb_i2s = &i2scont[bb_info->i2s_id];
@@ -1375,9 +1430,17 @@ int tegra30_make_voice_call_connections(struct codec_config *codec_info,
 	} else {
 
 		/*configure codec dam*/
-		configure_dam(codec_i2s, codec_info->channels,
-		   codec_info->rate, codec_info->bitsize, bb_info->channels,
-		   bb_info->rate, bb_info->bitsize);
+		ret = configure_dam(codec_i2s,
+				    codec_info->channels,
+				    codec_info->rate,
+				    codec_info->bitsize,
+				    bb_info->channels,
+				    bb_info->rate,
+				    bb_info->bitsize);
+		if (ret != 0) {
+			pr_err("Error: Failed configure_dam\n");
+			return ret;
+		}
 
 #ifdef CONFIG_MACH_X3
 		// Voice downlink volume
@@ -1385,9 +1448,17 @@ int tegra30_make_voice_call_connections(struct codec_config *codec_info,
 #endif
 
 		/*configure bb dam*/
-		configure_dam(bb_i2s, bb_info->channels,
-			bb_info->rate, bb_info->bitsize, codec_info->channels,
-			codec_info->rate, codec_info->bitsize);
+		ret = configure_dam(bb_i2s,
+				    bb_info->channels,
+				    bb_info->rate,
+				    bb_info->bitsize,
+				    codec_info->channels,
+				    codec_info->rate,
+				    codec_info->bitsize);
+		if (ret != 0) {
+			pr_err("Error: Failed configure_dam\n");
+			return ret;
+		}
 
 #ifdef CONFIG_MACH_X3
 		// Voice uplink volume
