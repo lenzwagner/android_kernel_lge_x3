@@ -33,6 +33,10 @@
 
 #include <trace/events/power.h>
 
+#include "../../arch/arm/mach-tegra/dvfs.h"
+#include "../../arch/arm/mach-tegra/clock.h"
+#include "../../arch/arm/mach-tegra/fuse.h"
+
 /**
  * The "cpufreq driver" - the arch- or hardware-dependent low
  * level driver of CPUFreq support, and its spinlock. This lock
@@ -580,6 +584,148 @@ static ssize_t show_bios_limit(struct cpufreq_policy *policy, char *buf)
 	return sprintf(buf, "%u\n", policy->cpuinfo.max_freq);
 }
 
+#ifdef CONFIG_VOLTAGE_CONTROL
+/*
+ * Tegra3 voltage control via cpufreq by Paul Reioux (faux123)
+ * inspired by Michael Huang's voltage control code for OMAP44xx
+ * Modded by iodak for p880 (X3)
+ */
+
+
+extern int user_mv_table[MAX_DVFS_FREQS];
+
+static ssize_t show_UV_mV_table(struct cpufreq_policy *policy, char *buf)
+{
+	int i = 0;
+	char *out = buf;
+	struct clk *cpu_clk_g = tegra_get_clock_by_name("cpu_g");
+
+	/* find how many actual entries there are */
+	i = cpu_clk_g->dvfs->num_freqs;
+
+	for(i--; i >=0; i--) {
+		if (cpu_clk_g->dvfs->freqs[i] != cpu_clk_g->dvfs->freqs[i-1]){
+		out += sprintf(out, "%lumhz: %i mV\n",
+				cpu_clk_g->dvfs->freqs[i]/1000000, //it will show cpu G freqs diferrent from freq table need fix
+				cpu_clk_g->dvfs->millivolts[i]);
+		}
+	}
+
+	return out - buf;
+}
+
+static ssize_t store_UV_mV_table(struct cpufreq_policy *policy, char *buf, size_t count)
+{
+	int i = 0;
+	unsigned long volt_cur;
+	int ret;
+	char size_cur[16];
+
+	struct clk *cpu_clk_g = tegra_get_clock_by_name("cpu_g");
+
+	/* find how many actual entries there are */
+	i = cpu_clk_g->dvfs->num_freqs;
+
+	for(i--; i >= 0; i--) {
+		if (cpu_clk_g->dvfs->freqs[i] != cpu_clk_g->dvfs->freqs[i-1] &&
+		 cpu_clk_g->dvfs->freqs[i]/1000000 != 0){
+			ret = sscanf(buf, "%lu", &volt_cur);
+			if (ret != 1)
+				return -EINVAL;
+
+			if (volt_cur >= 725 && volt_cur <= 1300){
+			user_mv_table[i] = volt_cur;
+			pr_info("user mv tbl[%i]: %lu\n", i, volt_cur);
+			}
+			/* Non-standard sysfs interface: advance buf */
+			ret = sscanf(buf, "%s", size_cur);
+			if (ret == 0)
+			return 0;
+			buf += (strlen(size_cur)+1);
+			}
+		}
+	/* update dvfs table here */
+	cpu_clk_g->dvfs->millivolts = user_mv_table;
+
+	return count;
+}
+
+static ssize_t show_lp_UV_mV_table(struct cpufreq_policy *policy, char *buf)
+{
+
+	char *out = buf;
+	unsigned int freqs_lp [6]={51, 102, 204, 370, 475, 513}; //fake freqs
+	struct clk *cpu_clk_lp = tegra_get_clock_by_name("cpu_lp");
+	int i = cpu_clk_lp->dvfs->num_freqs-3;
+
+	for(i--; i >= 0; i--){
+		out += sprintf(out, "%imhz: %i mV\n", freqs_lp[i], cpu_clk_lp->dvfs->millivolts[i]);
+		}
+
+	return out - buf;
+}
+
+static ssize_t store_lp_UV_mV_table(struct cpufreq_policy *policy, char *buf, size_t count)
+{
+	int i;
+	struct clk *cpu_clk_lp = tegra_get_clock_by_name("cpu_lp");
+	struct clk *clk_emc = tegra_get_clock_by_name("emc");
+	unsigned long volt_cur[cpu_clk_lp->dvfs->num_freqs-3];
+	int ret = 0;
+	
+	ret = sscanf(buf, "%lu %lu %lu %lu %lu %lu", &volt_cur[5], &volt_cur[4], &volt_cur[3], &volt_cur[2], &volt_cur[1], &volt_cur[0]);
+
+	if (ret != 6)
+	return -EINVAL;
+	
+	for(i = 0; i < 6; i++){
+		if(volt_cur[i] < 900){
+		printk(KERN_DEBUG "lp_voltage_control: You set too low voltage (%lu) set min to 900mV\n", volt_cur[i]);
+		volt_cur[i] = 900;
+		}
+		if(volt_cur[i] > 1350){
+		printk(KERN_DEBUG "lp_voltage_control: You set too high voltage (%lu) set max to 1350mV\n", volt_cur[i]);
+		volt_cur[i] = 1350;
+		}
+
+		cpu_clk_lp->dvfs->millivolts[i] = volt_cur[i];
+		clk_emc->dvfs->millivolts[i] = volt_cur[i];
+		printk(KERN_DEBUG "lp_voltage_control: Voltages are set to: %i mV\n", cpu_clk_lp->dvfs->millivolts[i]);
+	}
+
+	return count;
+}
+#endif
+
+static ssize_t show_tegra_cpu_variant(struct cpufreq_policy *policy, char *buf, size_t count)
+{
+	int cpu_process_id = tegra_cpu_process_id();
+	char *out = buf;
+
+	if (cpu_process_id == 1 || cpu_process_id == 0)
+	out += sprintf(out, "tegra_variant is %i, CPU is weak sorry :(\n",
+			cpu_process_id);
+	if (cpu_process_id == 3 || cpu_process_id == 2)
+	out += sprintf(out, "tegra_variant is %i, CPU is strong uhuuuu! :)\n",
+			cpu_process_id);
+	else
+	out += sprintf(out, "tegra_variant is %i\n",
+			cpu_process_id);
+	return out - buf;
+}
+
+static ssize_t show_gpu_cur_freq(struct cpufreq_policy *policy, char *buf, size_t count)
+{
+	struct clk *clk_3d = tegra_get_clock_by_name("3d");
+	struct clk *clk_2d = tegra_get_clock_by_name("2d");
+	char *out = buf;
+
+	out += sprintf(out, "3d: %lu MHz *** 2d: %lu MHz\n",
+				clk_get_rate(clk_3d) / 1000000,
+				clk_get_rate(clk_2d) / 1000000);
+	return out - buf;
+}
+
 cpufreq_freq_attr_ro_perm(cpuinfo_cur_freq, 0400);
 cpufreq_freq_attr_ro(cpuinfo_min_freq);
 cpufreq_freq_attr_ro(cpuinfo_max_freq);
@@ -596,6 +742,12 @@ cpufreq_freq_attr_rw(scaling_governor);
 cpufreq_freq_attr_rw(scaling_setspeed);
 cpufreq_freq_attr_ro(policy_min_freq);
 cpufreq_freq_attr_ro(policy_max_freq);
+#ifdef CONFIG_VOLTAGE_CONTROL
+cpufreq_freq_attr_rw(UV_mV_table);
+cpufreq_freq_attr_rw(lp_UV_mV_table);
+#endif
+cpufreq_freq_attr_ro(tegra_cpu_variant);
+cpufreq_freq_attr_ro(gpu_cur_freq);
 
 static struct attribute *default_attrs[] = {
 	&cpuinfo_min_freq.attr,
@@ -611,6 +763,12 @@ static struct attribute *default_attrs[] = {
 	&scaling_setspeed.attr,
 	&policy_min_freq.attr,
 	&policy_max_freq.attr,
+#ifdef CONFIG_VOLTAGE_CONTROL
+	&UV_mV_table.attr,
+	&lp_UV_mV_table.attr,
+#endif
+	&tegra_cpu_variant.attr,
+	&gpu_cur_freq.attr,
 	NULL
 };
 
