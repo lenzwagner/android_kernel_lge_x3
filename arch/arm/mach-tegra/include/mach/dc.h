@@ -100,6 +100,21 @@ struct tegra_dsi_cmd {
 	u8	*pdata;
 };
 
+#define DSI_GENERIC_LONG_WRITE			0x29
+#define DSI_GENERIC_SHORT_WRITE_1_PARAMS	0x13
+#define DSI_GENERIC_SHORT_WRITE_2_PARAMS	0x23
+#define DSI_DCS_WRITE_0_PARAM			0x05
+#define DSI_DCS_WRITE_1_PARAM			0x15
+
+#define DSI_DCS_SET_ADDR_MODE			0x36
+#define DSI_DCS_EXIT_SLEEP_MODE			0x11
+#define DSI_DCS_ENTER_SLEEP_MODE		0x10
+#define DSI_DCS_SET_DISPLAY_ON			0x29
+#define DSI_DCS_SET_DISPLAY_OFF			0x28
+#define DSI_DCS_SET_TEARING_EFFECT_OFF		0x34
+#define DSI_DCS_SET_TEARING_EFFECT_ON		0x35
+#define DSI_DCS_NO_OP				0x0
+
 #define DSI_CMD_SHORT(di, p0, p1)	{ \
 					.cmd_type = TEGRA_DSI_PACKET_CMD, \
 					.data_id = di, \
@@ -148,6 +163,52 @@ struct dsi_phy_timing_ns {
 	u16		t_tasure_ns;
 	u16		t_tago_ns;
 };
+
+enum {
+	CMD_VS		= 0x01,
+	CMD_VE		= 0x11,
+
+	CMD_HS		= 0x21,
+	CMD_HE		= 0x31,
+
+	CMD_EOT		= 0x08,
+	CMD_NULL	= 0x09,
+	CMD_SHORTW	= 0x15,
+	CMD_BLNK	= 0x19,
+	CMD_LONGW	= 0x39,
+
+	CMD_RGB		= 0x00,
+	CMD_RGB_16BPP	= 0x0E,
+	CMD_RGB_18BPP	= 0x1E,
+	CMD_RGB_18BPPNP = 0x2E,
+	CMD_RGB_24BPP	= 0x3E,
+};
+
+enum {
+	TEGRA_DSI_DISABLE,
+	TEGRA_DSI_ENABLE,
+};
+
+#define PKT_ID0(id)	((((id) & 0x3f) << 3) | \
+			(((TEGRA_DSI_ENABLE) & 0x1) << 9))
+#define PKT_LEN0(len)	(((len) & 0x7) << 0)
+#define PKT_ID1(id)	((((id) & 0x3f) << 13) | \
+			(((TEGRA_DSI_ENABLE) & 0x1) << 19))
+#define PKT_LEN1(len)	(((len) & 0x7) << 10)
+#define PKT_ID2(id)	((((id) & 0x3f) << 23) | \
+			(((TEGRA_DSI_ENABLE) & 0x1) << 29))
+#define PKT_LEN2(len)	(((len) & 0x7) << 20)
+#define PKT_ID3(id)	((((id) & 0x3f) << 3) | \
+			(((TEGRA_DSI_ENABLE) & 0x1) << 9))
+#define PKT_LEN3(len)	(((len) & 0x7) << 0)
+#define PKT_ID4(id)	((((id) & 0x3f) << 13) | \
+			(((TEGRA_DSI_ENABLE) & 0x1) << 19))
+#define PKT_LEN4(len)	(((len) & 0x7) << 10)
+#define PKT_ID5(id)	((((id) & 0x3f) << 23) | \
+			(((TEGRA_DSI_ENABLE) & 0x1) << 29))
+#define PKT_LEN5(len)	(((len) & 0x7) << 20)
+#define PKT_LP		(((TEGRA_DSI_ENABLE) & 0x1) << 30)
+#define NUMOF_PKT_SEQ	12
 
 enum {
 	DSI_VS_0 = 0x0,

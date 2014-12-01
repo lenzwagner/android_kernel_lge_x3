@@ -51,6 +51,7 @@
 
 #define DSI_USE_SYNC_POINTS		0
 #define S_TO_MS(x)			(1000 * (x))
+#define MS_TO_US(x)			(1000 * (x))
 
 #define DSI_MODULE_NOT_INIT		0x0
 #define DSI_MODULE_INIT			0x1
@@ -135,55 +136,36 @@ const u32 dsi_pkt_seq_reg[NUMOF_PKT_SEQ] = {
 	DSI_PKT_SEQ_5_HI,
 };
 
-#if 0
 const u32 dsi_pkt_seq_video_non_burst_syne[NUMOF_PKT_SEQ] = {
-	PKT_ID0(CMD_VS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
+	PKT_ID0(CMD_VS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(7) | PKT_LP,
 	0,
-	PKT_ID0(CMD_VE) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
+	PKT_ID0(CMD_VE) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(7) | PKT_LP,
 	0,
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
+	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(7) | PKT_LP,
 	0,
 	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_BLNK) | PKT_LEN1(1) |
 	PKT_ID2(CMD_HE) | PKT_LEN2(0),
 	PKT_ID3(CMD_BLNK) | PKT_LEN3(2) | PKT_ID4(CMD_RGB) | PKT_LEN4(3) |
 	PKT_ID5(CMD_BLNK) | PKT_LEN5(4),
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
+	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(7) | PKT_LP,
 	0,
 	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_BLNK) | PKT_LEN1(1) |
 	PKT_ID2(CMD_HE) | PKT_LEN2(0),
 	PKT_ID3(CMD_BLNK) | PKT_LEN3(2) | PKT_ID4(CMD_RGB) | PKT_LEN4(3) |
 	PKT_ID5(CMD_BLNK) | PKT_LEN5(4),
 };
-#else
-const u32 dsi_pkt_seq_video_non_burst_syne[NUMOF_PKT_SEQ] = {
-	PKT_ID0(CMD_VS) | PKT_LEN0(0) | PKT_LP,
-	0,
-	PKT_ID0(CMD_VE) | PKT_LEN0(0) | PKT_LP,
-	0,
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_LP,
-	0,
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_BLNK) | PKT_LEN1(1) |
-	PKT_ID2(CMD_HE) | PKT_LEN2(0),
-	PKT_ID3(CMD_BLNK) | PKT_LEN3(2) | PKT_ID4(CMD_RGB) | PKT_LEN4(3),
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_LP,
-	0,
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_BLNK) | PKT_LEN1(1) |
-	PKT_ID2(CMD_HE) | PKT_LEN2(0),
-	PKT_ID3(CMD_BLNK) | PKT_LEN3(2) | PKT_ID4(CMD_RGB) | PKT_LEN4(3),
-};
-#endif
 
 const u32 dsi_pkt_seq_video_non_burst[NUMOF_PKT_SEQ] = {
-	PKT_ID0(CMD_VS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
+	PKT_ID0(CMD_VS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(7) | PKT_LP,
 	0,
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
+	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(7) | PKT_LP,
 	0,
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
+	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(7) | PKT_LP,
 	0,
 	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_BLNK) | PKT_LEN1(2) |
 	PKT_ID2(CMD_RGB) | PKT_LEN2(3),
 	PKT_ID3(CMD_BLNK) | PKT_LEN3(4),
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
+	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(7) | PKT_LP,
 	0,
 	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_BLNK) | PKT_LEN1(2) |
 	PKT_ID2(CMD_RGB) | PKT_LEN2(3),
@@ -225,20 +207,20 @@ static const u32 dsi_pkt_seq_video_burst[NUMOF_PKT_SEQ] = {
 };
 
 static const u32 dsi_pkt_seq_video_burst_no_eot[NUMOF_PKT_SEQ] = {
-	PKT_ID0(CMD_VS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
+	PKT_ID0(CMD_VS) | PKT_LEN0(0) | PKT_LP,
 	0,
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
+	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_LP,
 	0,
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
-	0,
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_BLNK) | PKT_LEN1(2)|
-	PKT_ID2(CMD_RGB) | PKT_LEN2(3) | PKT_LP,
-	PKT_ID0(CMD_EOT) | PKT_LEN0(0),
-	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_EOT) | PKT_LEN1(0) | PKT_LP,
+	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_LP,
 	0,
 	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_BLNK) | PKT_LEN1(2)|
 	PKT_ID2(CMD_RGB) | PKT_LEN2(3) | PKT_LP,
-	PKT_ID0(CMD_EOT) | PKT_LEN0(0),
+	0,
+	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_LP,
+	0,
+	PKT_ID0(CMD_HS) | PKT_LEN0(0) | PKT_ID1(CMD_BLNK) | PKT_LEN1(2)|
+	PKT_ID2(CMD_RGB) | PKT_LEN2(3) | PKT_LP,
+	0,
 };
 
 /* TODO: verify with hw about this format */
@@ -1469,7 +1451,7 @@ static void tegra_dsi_setup_video_mode_pkt_length(struct tegra_dc *dc,
 			DSI_PKT_LEN_4_5_LENGTH_5(0);
 	tegra_dsi_writel(dsi, val, DSI_PKT_LEN_4_5);
 
-	val = DSI_PKT_LEN_6_7_LENGTH_6(0) | DSI_PKT_LEN_6_7_LENGTH_7(0);
+	val = DSI_PKT_LEN_6_7_LENGTH_6(0) | DSI_PKT_LEN_6_7_LENGTH_7(0x0f0f);
 	tegra_dsi_writel(dsi, val, DSI_PKT_LEN_6_7);
 }
 
@@ -1543,7 +1525,9 @@ static void tegra_dsi_set_pkt_seq(struct tegra_dc *dc,
 
 	pkt_seq_3_5_rgb_lo = 0;
 	pkt_seq_3_5_rgb_hi = 0;
-	if (dsi->info.video_data_type == TEGRA_DSI_VIDEO_TYPE_COMMAND_MODE)
+	if (dsi->info.pkt_seq)
+		pkt_seq = dsi->info.pkt_seq;
+	else if (dsi->info.video_data_type == TEGRA_DSI_VIDEO_TYPE_COMMAND_MODE)
 		pkt_seq = dsi_pkt_seq_cmd_mode;
 	else {
 		switch (dsi->info.video_burst_mode) {
@@ -1615,6 +1599,27 @@ static void tegra_dsi_reset_underflow_overflow
 static void tegra_dsi_soft_reset(struct tegra_dc_dsi_data *dsi)
 {
 	u32 trigger;
+	u32 val;
+	u32 frame_period = DIV_ROUND_UP(S_TO_MS(1), dsi->info.refresh_rate);
+	struct tegra_dc_mode mode = dsi->dc->mode;
+	u32 tot_lines = mode.v_sync_width + mode.v_back_porch +
+				mode.v_active + mode.v_front_porch;
+	u32 line_period = DIV_ROUND_UP(MS_TO_US(frame_period), tot_lines);
+	u32 timeout_cnt = 0;
+
+/* wait for 1 frame duration + few extra cycles for dsi to go idle */
+#define DSI_IDLE_TIMEOUT	(tot_lines + 5)
+
+	val = tegra_dsi_readl(dsi, DSI_STATUS);
+	while (!(val & DSI_STATUS_IDLE(0x1))) {
+		cpu_relax();
+		udelay(line_period);
+		val = tegra_dsi_readl(dsi, DSI_STATUS);
+		if (timeout_cnt++ > DSI_IDLE_TIMEOUT) {
+			dev_warn(&dsi->dc->ndev->dev, "dsi not idle when soft reset\n");
+			break;
+		}
+	}
 
 	tegra_dsi_writel(dsi,
 		DSI_POWER_CONTROL_LEG_DSI_ENABLE(TEGRA_DSI_DISABLE),
@@ -1635,6 +1640,8 @@ static void tegra_dsi_soft_reset(struct tegra_dc_dsi_data *dsi)
 	trigger = tegra_dsi_readl(dsi, DSI_TRIGGER);
 	if (trigger)
 		tegra_dsi_writel(dsi, 0x0, DSI_TRIGGER);
+
+#undef DSI_IDLE_TIMEOUT
 }
 
 static void tegra_dsi_stop_dc_stream(struct tegra_dc *dc,
@@ -1664,6 +1671,12 @@ static int tegra_dsi_wait_frame_end(struct tegra_dc *dc,
 	int val;
 	long timeout;
 	u32 frame_period = DIV_ROUND_UP(S_TO_MS(1), dsi->info.refresh_rate);
+	struct tegra_dc_mode mode = dc->mode;
+	u32 line_period = DIV_ROUND_UP(
+				MS_TO_US(frame_period),
+				mode.v_sync_width + mode.v_back_porch +
+				mode.v_active + mode.v_front_porch);
+
 
 	INIT_COMPLETION(dc->frame_end_complete);
 
@@ -1682,6 +1695,9 @@ static int tegra_dsi_wait_frame_end(struct tegra_dc *dc,
 	/* reinstate interrupt mask */
 	tegra_dc_writel(dc, val, DC_CMD_INT_MASK);
 
+	/* wait for v_ref_to_sync no. of lines after frame end interrupt */
+	udelay(mode.v_ref_to_sync * line_period);
+
 	return timeout;
 }
 
@@ -1693,11 +1709,6 @@ static void tegra_dsi_stop_dc_stream_at_frame_end(struct tegra_dc *dc,
 	tegra_dsi_stop_dc_stream(dc, dsi);
 
 	timeout = tegra_dsi_wait_frame_end(dc, dsi);
-
-	/* give 2 line time to dsi HW to catch up
-	 * with pixels sent by dc
-	 */
-	udelay(50);
 
 	tegra_dsi_soft_reset(dsi);
 
@@ -2067,6 +2078,7 @@ static void tegra_dsi_mipi_calibration_11x(struct tegra_dc_dsi_data *dsi)
 static void tegra_dsi_pad_calibration(struct tegra_dc_dsi_data *dsi)
 {
 	u32 val;
+	u32 timeout = 0;
 
 	if (!dsi->ulpm)
 		tegra_dsi_pad_enable(dsi);
@@ -2074,17 +2086,116 @@ static void tegra_dsi_pad_calibration(struct tegra_dc_dsi_data *dsi)
 		tegra_dsi_pad_disable(dsi);
 
 	if (dsi->info.controller_vs == DSI_VS_1) {
-		/* TODO: characterization parameters */
-		tegra_mipi_cal_clk_enable(dsi->mipi_cal);
 
 		tegra_mipi_cal_init_hw(dsi->mipi_cal);
 
+		tegra_mipi_cal_clk_enable(dsi->mipi_cal);
+
 		tegra_mipi_cal_write(dsi->mipi_cal,
-				MIPI_BIAS_PAD_E_VCLAMP_REF(0x1),
-				MIPI_CAL_MIPI_BIAS_PAD_CFG0_0);
+			MIPI_BIAS_PAD_E_VCLAMP_REF(0x1),
+			MIPI_CAL_MIPI_BIAS_PAD_CFG0_0);
 		tegra_mipi_cal_write(dsi->mipi_cal,
-				PAD_PDVREG(0x0),
-				MIPI_CAL_MIPI_BIAS_PAD_CFG2_0);
+			PAD_PDVREG(0x0),
+			MIPI_CAL_MIPI_BIAS_PAD_CFG2_0);
+
+		/* Calibration settings begin */
+		val = (DSI_PAD_SLEWUPADJ(0x7) | DSI_PAD_SLEWDNADJ(0x7) |
+			DSI_PAD_LPUPADJ(0x1) | DSI_PAD_LPDNADJ(0x1) |
+			DSI_PAD_OUTADJCLK(0x0));
+		tegra_dsi_writel(dsi, val, DSI_PAD_CONTROL_2_VS1);
+
+		tegra_mipi_cal_write(dsi->mipi_cal,
+			PAD_VCLAMP_LEVEL(0x0),
+			MIPI_CAL_MIPI_BIAS_PAD_CFG2_0);
+
+		if (!dsi->controller_index) {
+			val = tegra_dsi_readl(dsi,
+				MIPI_CAL_DSIA_MIPI_CAL_CONFIG_0);
+			val = MIPI_CAL_OVERIDEDSIA(0x0) |
+				MIPI_CAL_SELDSIA(0x1) |
+				MIPI_CAL_HSPDOSDSIA(0x2) |
+				MIPI_CAL_HSPUOSDSIA(0x0) |
+				MIPI_CAL_TERMOSDSIA(0x5);
+			tegra_mipi_cal_write(dsi->mipi_cal, val,
+				MIPI_CAL_DSIA_MIPI_CAL_CONFIG_0);
+			tegra_mipi_cal_write(dsi->mipi_cal, val,
+				MIPI_CAL_DSIB_MIPI_CAL_CONFIG_0);
+
+			/* Deselect PAD C */
+			val = tegra_mipi_cal_read(dsi->mipi_cal,
+				MIPI_CAL_DSIC_MIPI_CAL_CONFIG_0);
+			val &= ~(MIPI_CAL_SELDSIC(0x1));
+			tegra_mipi_cal_write(dsi->mipi_cal, val,
+				MIPI_CAL_DSIC_MIPI_CAL_CONFIG_0);
+
+			/* Deselect PAD D */
+			val = tegra_mipi_cal_read(dsi->mipi_cal,
+				MIPI_CAL_DSID_MIPI_CAL_CONFIG_0);
+			val &= ~(MIPI_CAL_SELDSID(0x1));
+			tegra_mipi_cal_write(dsi->mipi_cal, val,
+				MIPI_CAL_DSID_MIPI_CAL_CONFIG_0);
+		} else {
+			val = tegra_dsi_readl(dsi,
+				MIPI_CAL_DSIC_MIPI_CAL_CONFIG_0);
+			val = MIPI_CAL_OVERIDEDSIC(0x0) |
+				MIPI_CAL_SELDSIC(0x1) |
+				MIPI_CAL_HSPDOSDSIC(0x2) |
+				MIPI_CAL_HSPUOSDSIC(0x0) |
+				MIPI_CAL_TERMOSDSIC(0x5);
+			tegra_mipi_cal_write(dsi->mipi_cal, val,
+				MIPI_CAL_DSIC_MIPI_CAL_CONFIG_0);
+			tegra_mipi_cal_write(dsi->mipi_cal, val,
+				MIPI_CAL_DSID_MIPI_CAL_CONFIG_0);
+
+			/* Deselect PAD A */
+			val = tegra_mipi_cal_read(dsi->mipi_cal,
+				MIPI_CAL_DSIA_MIPI_CAL_CONFIG_0);
+			val &= ~(MIPI_CAL_SELDSIA(0x1));
+			tegra_mipi_cal_write(dsi->mipi_cal, val,
+				MIPI_CAL_DSIA_MIPI_CAL_CONFIG_0);
+
+			/* Deselect PAD B */
+			val = tegra_mipi_cal_read(dsi->mipi_cal,
+				MIPI_CAL_DSIB_MIPI_CAL_CONFIG_0);
+			val &= ~(MIPI_CAL_SELDSIB(0x1));
+			tegra_mipi_cal_write(dsi->mipi_cal, val,
+				MIPI_CAL_DSIB_MIPI_CAL_CONFIG_0);
+		}
+
+		val = tegra_mipi_cal_read(dsi->mipi_cal,
+			MIPI_CAL_MIPI_CAL_CTRL_0);
+		val = MIPI_CAL_NOISE_FLT(0xa) |
+			  MIPI_CAL_PRESCALE(0x2) |
+			  MIPI_CAL_CLKEN_OVR(0x1) |
+			  MIPI_CAL_AUTOCAL_EN(0x0) |
+			  MIPI_CAL_STARTCAL(0x0);
+		tegra_mipi_cal_write(dsi->mipi_cal, val,
+			MIPI_CAL_MIPI_CAL_CTRL_0);
+
+		/* Time period */
+		tegra_mipi_cal_write(dsi->mipi_cal, 0xFFFFFFFF,
+			MIPI_CAL_MIPI_CAL_AUTOCAL_CTRL0_0);
+
+		/* Start calibration */
+		val = tegra_mipi_cal_read(dsi->mipi_cal,
+			MIPI_CAL_MIPI_CAL_CTRL_0);
+		val |= (MIPI_CAL_STARTCAL(0x1));
+		tegra_mipi_cal_write(dsi->mipi_cal, val,
+			MIPI_CAL_MIPI_CAL_CTRL_0);
+
+		for (timeout = MIPI_DSI_AUTOCAL_TIMEOUT_USEC;
+				timeout; timeout -= 100) {
+			val = tegra_mipi_cal_read(dsi->mipi_cal,
+			MIPI_CAL_CIL_MIPI_CAL_STATUS_0);
+			if (!(val & MIPI_CAL_ACTIVE(0x1)) &&
+				(val & MIPI_AUTO_CAL_DONE(0x1))) {
+					dev_err(&dsi->dc->ndev->dev, "DSI pad calibration done\n");
+					break;
+			}
+			usleep_range(10, 100);
+		}
+		if (timeout <= 0)
+			dev_err(&dsi->dc->ndev->dev, "DSI calibration timed out\n");
 
 		tegra_mipi_cal_clk_disable(dsi->mipi_cal);
 	} else {

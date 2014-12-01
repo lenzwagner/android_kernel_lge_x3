@@ -28,6 +28,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
+#include <trace/events/nvhost.h>
 
 #include <mach/powergate.h>
 #include <mach/clk.h>
@@ -374,6 +375,9 @@ static int nvhost_module_update_rate(struct platform_device *dev, int index)
 	}
 	if (!rate)
 		rate = default_rate;
+
+	trace_nvhost_module_update_rate(dev->name,
+			pdata->clocks[index].name, rate);
 
 	ret = clk_set_rate(pdata->clk[index], rate);
 
