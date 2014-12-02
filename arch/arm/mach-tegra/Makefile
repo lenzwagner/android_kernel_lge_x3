@@ -23,7 +23,7 @@ obj-y                                   += common-t2.o
 obj-y                                   += pm-t2.o
 obj-y                                   += sleep-t2.o
 obj-y                                   += timer-t2.o
-obj-y                                   += wakeups-t2.o
+obj-$(CONFIG_PM_SLEEP)                  += wakeups-t2.o
 ifeq ($(CONFIG_CPU_IDLE),y)
 obj-$(CONFIG_PM_SLEEP)                  += cpuidle-t2.o
 endif
@@ -35,9 +35,9 @@ obj-$(CONFIG_DEBUG_FS)                  += clocks_stats.o
 obj-y                                   += timer-t3.o
 obj-y                                   += tegra_core_volt_cap.o
 ifeq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
-obj-y                                   += wakeups-t3.o
+obj-$(CONFIG_PM_SLEEP)                  += wakeups-t3.o
 else
-obj-y                                   += wakeups-t11x.o
+obj-$(CONFIG_PM_SLEEP)                  += wakeups-t11x.o
 endif
 ifeq ($(CONFIG_CPU_IDLE),y)
 ifeq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
@@ -294,6 +294,17 @@ obj-${CONFIG_MACH_MACALLAN}             += board-macallan-panel.o
 obj-${CONFIG_MACH_MACALLAN}             += board-macallan-kbc.o
 obj-${CONFIG_MACH_MACALLAN}             += board-macallan-sensors.o
 obj-${CONFIG_MACH_MACALLAN}             += panel-p-wuxga-10-1.o
+
+obj-${CONFIG_MACH_TEGRATAB}            += board-tegratab.o
+obj-${CONFIG_MACH_TEGRATAB}            += board-tegratab-memory.o
+obj-${CONFIG_MACH_TEGRATAB}            += board-tegratab-pinmux.o
+obj-${CONFIG_MACH_TEGRATAB}            += board-tegratab-power.o
+obj-${CONFIG_MACH_TEGRATAB}            += board-tegratab-powermon.o
+obj-${CONFIG_MACH_TEGRATAB}            += board-tegratab-sdhci.o
+obj-${CONFIG_MACH_TEGRATAB}            += board-tegratab-panel.o
+obj-${CONFIG_MACH_TEGRATAB}            += board-tegratab-kbc.o
+obj-${CONFIG_MACH_TEGRATAB}            += board-tegratab-sensors.o
+obj-${CONFIG_MACH_TEGRATAB}            += panel-p-wuxga-10-1.o
 
 obj-${CONFIG_MACH_TEGRA_PLUTO}          += board-pluto.o
 obj-${CONFIG_MACH_TEGRA_PLUTO}          += board-pluto-memory.o

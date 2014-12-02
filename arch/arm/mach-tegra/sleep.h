@@ -133,6 +133,12 @@
 .macro exit_smp, tmp1, tmp2
 	mrc	p15, 0, \tmp1, c1, c0, 1	@ ACTLR
 	bic	\tmp1, \tmp1, #(1<<6) | (1<<0)	@ clear ACTLR.SMP | ACTLR.FW
+#ifdef CONFIG_ARM_ERRATA_799270
+	ldr	\tmp2, =TEGRA_CLK_RESET_VIRT
+	ldr	\tmp2, [\tmp2, #0x70]		@ BOND_OUT_L
+	and	\tmp2, \tmp2, #0
+	orr	\tmp1, \tmp1, \tmp2
+#endif
 	mcr	p15, 0, \tmp1, c1, c0, 1	@ ACTLR
 	isb
 	dsb
