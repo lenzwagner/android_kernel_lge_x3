@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013, nvidia corporation.
+ * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * this program is free software; you can redistribute it and/or modify
  * it under the terms of the gnu general public license as published by
@@ -23,44 +23,60 @@
 #include "apbio.h"
 #include "fuse.h"
 
-#ifndef __TEGRA3_FUSE_OFFSETS_H
-#define __TEGRA3_FUSE_OFFSETS_H
+#ifndef __TEGRA14x_FUSE_OFFSETS_H
+#define __TEGRA14x_FUSE_OFFSETS_H
 
 /* private_key4 */
-#define DEVKEY_START_OFFSET 0x16
-#define DEVKEY_START_BIT    22
+#define DEVKEY_START_OFFSET		0x2C
+#define DEVKEY_START_BIT		11
 
 /* arm_debug_dis */
-#define JTAG_START_OFFSET 0x0
-#define JTAG_START_BIT    24
+#define JTAG_START_OFFSET		0x0
+#define JTAG_START_BIT			3
 
 /* security_mode */
-#define ODM_PROD_START_OFFSET 0x0
-#define ODM_PROD_START_BIT    23
+#define ODM_PROD_START_OFFSET		0x0
+#define ODM_PROD_START_BIT		11
 
 /* boot_device_info */
-#define SB_DEVCFG_START_OFFSET 0x18
-#define SB_DEVCFG_START_BIT    22
+#define SB_DEVCFG_START_OFFSET		0x2E
+#define SB_DEVCFG_START_BIT		11
 
 /* reserved_sw[2:0] */
-#define SB_DEVSEL_START_OFFSET 0x1A
-#define SB_DEVSEL_START_BIT    6
+#define SB_DEVSEL_START_OFFSET		0x2E
+#define SB_DEVSEL_START_BIT		27
 
-/* private_key0 -> private_key3 */
-#define SBK_START_OFFSET 0x0E
-#define SBK_START_BIT    22
+/* private_key0 -> private_key3 (SBK) */
+#define SBK_START_OFFSET		0x24
+#define SBK_START_BIT			11
 
 /* reserved_sw[7:4] */
-#define SW_RESERVED_START_OFFSET 0x1A
-#define SW_RESERVED_START_BIT    10
+#define SW_RESERVED_START_OFFSET	0x2E
+#define SW_RESERVED_START_BIT		31
 
 /* reserved_sw[3] */
-#define IGNORE_DEVSEL_START_OFFSET 0x1A
-#define IGNORE_DEVSEL_START_BIT    9
+#define IGNORE_DEVSEL_START_OFFSET	0x2E
+#define IGNORE_DEVSEL_START_BIT		30
+
+/* public key */
+#define PUBLIC_KEY_START_OFFSET		0x0A
+#define PUBLIC_KEY_START_BIT		29
+
+/* pkc_disable */
+#define PKC_DISABLE_START_OFFSET        0x5C
+#define PKC_DISABLE_START_BIT           0
+
+/* video vp8 enable */
+#define VP8_ENABLE_START_OFFSET		0x30
+#define VP8_ENABLE_START_BIT		3
+
+/* odm lock */
+#define ODM_LOCK_START_OFFSET		0x0
+#define ODM_LOCK_START_BIT		6
 
 /* reserved_odm0 -> reserved_odm7 */
-#define ODM_RESERVED_DEVSEL_START_OFFSET 0x1A
-#define ODM_RESERVED_START_BIT    14
+#define ODM_RESERVED_DEVSEL_START_OFFSET	0x30
+#define ODM_RESERVED_START_BIT			4
 
 #define FUSE_VENDOR_CODE	0x200
 #define FUSE_VENDOR_CODE_MASK	0xf
@@ -76,17 +92,31 @@
 #define FUSE_Y_COORDINATE_MASK	0x1ff
 #define FUSE_GPU_INFO		0x390
 #define FUSE_GPU_INFO_MASK	(1<<2)
-#define FUSE_SPARE_BIT		0x244
+#define FUSE_SPARE_BIT		0x2a0
 /* fuse registers used in public fuse data read API */
 #define FUSE_TEST_PROGRAM_REVISION_0	0x128
 /* fuse spare bits are used to get Tj-ADT values */
 #define NUM_TSENSOR_SPARE_BITS	28
 /* tsensor calibration register */
 #define FUSE_TSENSOR_CALIB_0	0x198
+#define FUSE_VSENSOR_CALIB_0	0x18c
 
 #define TEGRA_FUSE_SUPPLY	"vpp_fuse"
 
 int fuse_pgm_cycles[] = {130, 168, 0, 0, 192, 384, 0, 0, 120, 480, 0, 0, 260};
+
+#define CHK_ERR(x) \
+{ \
+	if (x) { \
+		pr_err("%s: sysfs_create_file fail(%d)!", __func__, x); \
+		return x; \
+	} \
+}
+
+DEVICE_ATTR(public_key, 0440, tegra_fuse_show, tegra_fuse_store);
+DEVICE_ATTR(pkc_disable, 0440, tegra_fuse_show, tegra_fuse_store);
+DEVICE_ATTR(vp8_enable, 0440, tegra_fuse_show, tegra_fuse_store);
+DEVICE_ATTR(odm_lock, 0440, tegra_fuse_show, tegra_fuse_store);
 
 int tegra_fuse_get_revision(u32 *rev)
 {
@@ -161,8 +191,8 @@ unsigned long long tegra_chip_uid(void)
 		Total     64
 	*/
 
-	/* chip id is 0 for tegra 3 */
-	cid = 0;
+	/* chip id is 1 for tegra 14x */
+	cid = 1;
 
 	vendor = tegra_fuse_readl(FUSE_VENDOR_CODE) & FUSE_VENDOR_CODE_MASK;
 	fab = tegra_fuse_readl(FUSE_FAB_CODE) & FUSE_FAB_CODE_MASK;
@@ -193,4 +223,77 @@ unsigned long long tegra_chip_uid(void)
 	    | ((unsigned long long)y << 0ull);
 	return uid;
 }
-#endif /* __TEGRA3_FUSE_OFFSETS_H */
+
+int tegra_fuse_get_vsensor_calib(u32 *calib)
+{
+	*calib = tegra_fuse_readl(FUSE_VSENSOR_CALIB_0);
+	return 0;
+}
+
+static int tsensor_calib_offset[] = {
+	[0] = 0x198,
+	[1] = 0x184,
+	[2] = 0x188,
+	[3] = 0x22c,
+	[4] = 0x254,
+	[5] = 0x258,
+	[6] = 0x25c,
+	[7] = 0x260,
+};
+
+int tegra_fuse_get_tsensor_calib(int index, u32 *calib)
+{
+	if (index < 0 || index > 7)
+		return -EINVAL;
+	*calib = tegra_fuse_readl(tsensor_calib_offset[index]);
+	return 0;
+}
+
+int tegra_fuse_get_tsensor_calib(int index, u32 *calib)
+{
+	if (index < 0 || index > 7)
+		return -EINVAL;
+	*calib = tegra_fuse_readl(tsensor_calib_offset[index]);
+	return 0;
+}
+
+int tegra_fuse_add_sysfs_variables(struct platform_device *pdev,
+					bool odm_security_mode)
+{
+	dev_attr_odm_lock.attr.mode = 0640;
+	if (odm_security_mode) {
+		dev_attr_public_key.attr.mode =  0440;
+		dev_attr_pkc_disable.attr.mode = 0440;
+		dev_attr_vp8_enable.attr.mode = 0440;
+	} else {
+		dev_attr_public_key.attr.mode =  0640;
+		dev_attr_pkc_disable.attr.mode = 0640;
+		dev_attr_vp8_enable.attr.mode = 0640;
+	}
+	CHK_ERR(sysfs_create_file(&pdev->dev.kobj, &dev_attr_public_key.attr));
+	CHK_ERR(sysfs_create_file(&pdev->dev.kobj, &dev_attr_pkc_disable.attr));
+	CHK_ERR(sysfs_create_file(&pdev->dev.kobj, &dev_attr_vp8_enable.attr));
+	CHK_ERR(sysfs_create_file(&pdev->dev.kobj, &dev_attr_odm_lock.attr));
+
+	return 0;
+}
+
+int tegra_fuse_rm_sysfs_variables(struct platform_device *pdev)
+{
+	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_public_key.attr);
+	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_pkc_disable.attr);
+	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_vp8_enable.attr);
+	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_odm_lock.attr);
+
+	return 0;
+}
+
+int tegra_fuse_ch_sysfs_perm(struct kobject *kobj)
+{
+	CHK_ERR(sysfs_chmod_file(kobj, &dev_attr_public_key.attr, 0440));
+	CHK_ERR(sysfs_chmod_file(kobj, &dev_attr_pkc_disable.attr, 0440));
+	CHK_ERR(sysfs_chmod_file(kobj, &dev_attr_vp8_enable.attr, 0440));
+
+	return 0;
+}
+#endif /* __TEGRA14x_FUSE_OFFSETS_H */
