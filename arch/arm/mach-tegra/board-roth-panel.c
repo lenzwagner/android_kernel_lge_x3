@@ -34,6 +34,7 @@
 #include <asm/mach-types.h>
 
 #include "board.h"
+#include "board-panel.h"
 #include "devices.h"
 #include "gpio-names.h"
 #include "tegra11_host1x_devices.h"
@@ -65,8 +66,6 @@ struct platform_device * __init roth_host1x_init(void)
 
 /* HDMI Hotplug detection pin */
 #define roth_hdmi_hpd	TEGRA_GPIO_PN7
-
-static atomic_t sd_brightness = ATOMIC_INIT(255);
 
 static bool reg_requested;
 static bool gpio_requested;
@@ -774,12 +773,9 @@ int __init roth_panel_init(void)
 		return err;
 	}
 
-	roth_disp2_device.dev.parent = &phost1x->dev;
-	err = platform_device_register(&roth_disp2_device);
-	if (err) {
-		pr_err("disp2 device registration failed\n");
+	err = tegra_init_hdmi(&roth_disp2_device, phost1x);
+	if (err)
 		return err;
-	}
 
 #if IS_EXTERNAL_PWM
 	err = platform_add_devices(roth_bl_device,

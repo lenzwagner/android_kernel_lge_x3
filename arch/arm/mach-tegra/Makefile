@@ -2,6 +2,7 @@ GCOV_PROFILE := y
 
 #subdir-ccflags-y := -Werror
 
+obj-y                                   += tegra_rst_reason.o
 obj-y                                   += board-pinmux.o
 obj-y                                   += ahb.o
 obj-y                                   += common.o
@@ -36,7 +37,7 @@ obj-y                                   += tegra_core_volt_cap.o
 ifeq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
 obj-y                                   += wakeups-t3.o
 else
-obj-y					+= wakeups-t11x.o
+obj-y                                   += wakeups-t11x.o
 endif
 ifeq ($(CONFIG_CPU_IDLE),y)
 ifeq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
@@ -107,22 +108,22 @@ obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += pinmux-tegra30-tables.o
 obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += board-dt-tegra30.o
 obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += pinmux-t11-tables.o
 obj-$(CONFIG_HOTPLUG_CPU)               += hotplug.o
-obj-y					+= pmc.o
-obj-y					+= flowctrl.o
-obj-$(CONFIG_CPU_IDLE)			+= cpuidle.o
-obj-$(CONFIG_CPU_IDLE)			+= sleep.o
+obj-y                                   += pmc.o
+obj-y                                   += flowctrl.o
+obj-$(CONFIG_CPU_IDLE)                  += cpuidle.o
+obj-$(CONFIG_CPU_IDLE)                  += sleep.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += tegra2_clocks.o
-obj-$(CONFIG_ARCH_TEGRA_3x_SOC)		+= tegra30_clocks.o
+obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += tegra30_clocks.o
 obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra11_clocks.o
-obj-$(CONFIG_SMP)			+= platsmp.o
-obj-y					+= headsmp.o
-obj-y					+= reset.o
-obj-$(CONFIG_TEGRA_SYSTEM_DMA)		+= dma.o apbio.o
+obj-$(CONFIG_SMP)                       += platsmp.o
+obj-y                                   += headsmp.o
+obj-y                                   += reset.o
+obj-$(CONFIG_TEGRA_SYSTEM_DMA)          += dma.o apbio.o
 obj-$(CONFIG_CPU_FREQ)                  += cpu-tegra.o
 ifeq ($(CONFIG_TEGRA_AUTO_HOTPLUG),y)
 ifeq ($(CONFIG_TEGRA_CPUQUIET),y)
-obj-$(CONFIG_ARCH_TEGRA_3x_SOC)		+= cpuquiet.o
-obj-$(CONFIG_ARCH_TEGRA_11x_SOC)	+= cpuquiet.o
+obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += cpuquiet.o
+obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += cpuquiet.o
 else
 obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += cpu-tegra3.o
 endif
@@ -150,7 +151,8 @@ obj-$(CONFIG_TEGRA_DYNAMIC_PWRDET)      += powerdetect.o
 obj-$(CONFIG_TEGRA_USB_MODEM_POWER)     += tegra_usb_modem_power.o
 obj-$(CONFIG_ARCH_TEGRA_HAS_CL_DVFS)    += tegra_cl_dvfs.o
 
-obj-y					+= board-common.o
+obj-y                                   += board-common.o
+obj-y                                   += board-panel.o
 obj-$(CONFIG_TEGRA_WAKEUP_MONITOR)      += tegra_wakeup_monitor.o
 obj-$(CONFIG_TEGRA_PCI)                 += pcie.o
 
@@ -277,7 +279,7 @@ obj-${CONFIG_MACH_DALMORE}              += board-dalmore-sdhci.o
 obj-${CONFIG_MACH_DALMORE}              += board-dalmore-panel.o
 obj-${CONFIG_MACH_DALMORE}              += board-roth-panel.o
 obj-${CONFIG_MACH_DALMORE}              += board-dalmore-kbc.o
-obj-${CONFIG_MACH_DALMORE}          	+= board-dalmore-sensors.o
+obj-${CONFIG_MACH_DALMORE}              += board-dalmore-sensors.o
 obj-${CONFIG_MACH_DALMORE}              += panel-a-1080p-11-6.o
 obj-${CONFIG_MACH_DALMORE}              += panel-p-wuxga-10-1.o
 obj-${CONFIG_MACH_DALMORE}              += panel-s-wqxga-10-1.o

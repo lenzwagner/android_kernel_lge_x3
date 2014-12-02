@@ -476,12 +476,9 @@ int __init dalmore_panel_init(void)
 		return err;
 	}
 
-	dalmore_disp2_device.dev.parent = &phost1x->dev;
-	err = platform_device_register(&dalmore_disp2_device);
-	if (err) {
-		pr_err("disp2 device registration failed\n");
+	err = tegra_init_hdmi(&dalmore_disp2_device, phost1x);
+	if (err)
 		return err;
-	}
 
 #ifdef CONFIG_TEGRA_NVAVP
 	nvavp_device.dev.parent = &phost1x->dev;

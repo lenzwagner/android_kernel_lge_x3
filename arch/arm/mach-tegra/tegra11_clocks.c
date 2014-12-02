@@ -3833,9 +3833,8 @@ static void tegra11_periph_clk_init(struct clk *c)
 		c->parent = mux->input;
 	} else {
 		if (c->flags & PLLU) {
-			/* for xusb_hs clock enforce PLLU source during init */
+			/* for xusb_hs clock enforce SS div2 source */
 			val &= ~periph_clk_source_mask(c);
-			val |= c->inputs[0].value << periph_clk_source_shift(c);
 			clk_writel_delay(val, c->reg);
 		}
 		c->parent = c->inputs[0].input;
@@ -4956,8 +4955,9 @@ static unsigned long tegra11_clk_shared_bus_update(struct clk *bus,
 	unsigned long top_rate = 0;
 	unsigned long rate = bus->min_rate;
 	unsigned long bw = 0;
+	unsigned long iso_bw = 0;
 	unsigned long ceiling = bus->max_rate;
-	u8 emc_bw_efficiency = tegra_emc_bw_efficiency;
+	u32 usage_flags = 0;
 
 	list_for_each_entry(c, &bus->shared_bus_list,
 			u.shared_bus_user.node) {
@@ -4971,8 +4971,14 @@ static unsigned long tegra11_clk_shared_bus_update(struct clk *bus,
 		    (c->u.shared_bus_user.mode == SHARED_CEILING)) {
 			unsigned long request_rate = c->u.shared_bus_user.rate *
 				(c->div ? : 1);
+			usage_flags |= c->u.shared_bus_user.usage_flag;
 
 			switch (c->u.shared_bus_user.mode) {
+			case SHARED_ISO_BW:
+				iso_bw += request_rate;
+				if (iso_bw > bus->max_rate)
+					iso_bw = bus->max_rate;
+				/* fall thru */
 			case SHARED_BW:
 				bw += request_rate;
 				if (bw > bus->max_rate)
@@ -5006,10 +5012,21 @@ static unsigned long tegra11_clk_shared_bus_update(struct clk *bus,
 		}
 	}
 
-	if ((bus->flags & PERIPH_EMC_ENB) && bw && (emc_bw_efficiency < 100)) {
-		bw = emc_bw_efficiency ?
-			(bw / emc_bw_efficiency) : bus->max_rate;
-		bw = (bw < bus->max_rate / 100) ? (bw * 100) : bus->max_rate;
+	if (bus->flags & PERIPH_EMC_ENB) {
+		u8 efficiency = tegra_emc_get_iso_share(usage_flags);
+		if (iso_bw && efficiency && (efficiency < 100)) {
+			iso_bw /= efficiency;
+			iso_bw = (iso_bw < bus->max_rate / 100) ?
+					(iso_bw * 100) : bus->max_rate;
+		}
+		bw = max(bw, iso_bw);
+		efficiency = tegra_emc_bw_efficiency;
+
+		if (bw && efficiency && (efficiency < 100)) {
+			bw = bw / efficiency;
+			bw = (bw < bus->max_rate / 100) ?
+				(bw * 100) : bus->max_rate;
+		}
 	}
 
 	rate = override_rate ? : max(rate, bw);
@@ -5148,7 +5165,8 @@ static long tegra_clk_shared_bus_user_round_rate(
 	/* Defer rounding requests until aggregated. BW users must not be
 	   rounded at all, others just clipped to bus range (some clients
 	   may use round api to find limits) */
-	if (c->u.shared_bus_user.mode != SHARED_BW) {
+	if ((c->u.shared_bus_user.mode != SHARED_BW) &&
+	    (c->u.shared_bus_user.mode != SHARED_ISO_BW)) {
 		if (c->div > 1)
 			rate *= c->div;
 
@@ -6330,13 +6348,6 @@ static struct clk_mux_sel mux_clk_32k[] = {
 	{ 0, 0},
 };
 
-/* xusb_hs has an alternative source, that is not used - therefore, xusb_hs
-   is modeled as a single source mux */
-static struct clk_mux_sel mux_pllu_60M[] = {
-	{ .input = &tegra_pll_u_60M, .value = 1},
-	{ 0, 0},
-};
-
 static struct raw_notifier_head emc_rate_change_nh;
 
 static struct clk tegra_clk_emc = {
@@ -6506,6 +6517,23 @@ static struct clk tegra_clk_cbus = {
 			.mode = _mode,			\
 		},					\
 	}
+#define SHARED_EMC_CLK(_name, _dev, _con, _parent, _id, _div, _mode, _flag)\
+	{						\
+		.name      = _name,			\
+		.lookup    = {				\
+			.dev_id    = _dev,		\
+			.con_id    = _con,		\
+		},					\
+		.ops = &tegra_clk_shared_bus_user_ops,	\
+		.parent = _parent,			\
+		.u.shared_bus_user = {			\
+			.client_id = _id,		\
+			.client_div = _div,		\
+			.mode = _mode,			\
+			.usage_flag = _flag,		\
+		},					\
+	}
+
 struct clk tegra_list_clks[] = {
 	PERIPH_CLK("apbdma",	"tegra-dma",		NULL,	34,	0,	26000000,  mux_clk_m,			0),
 	PERIPH_CLK("rtc",	"rtc-tegra",		NULL,	4,	0,	32768,     mux_clk_32k,			PERIPH_NO_RESET | PERIPH_ON_APB),
@@ -6609,6 +6637,7 @@ struct clk tegra_list_clks[] = {
 
 	PERIPH_CLK("tsensor",	"tegra-tsensor",	NULL,	100,	0x3b8,	 12000000, mux_pllp_pllc_clkm_clk32,	MUX | DIV_U71 | PERIPH_ON_APB),
 	PERIPH_CLK("actmon",	"actmon",		NULL,	119,	0x3e8,	216000000, mux_pllp_pllc_clk32_clkm,	MUX | DIV_U71),
+	PERIPH_CLK("atomics",	"atomics",		NULL,	112,	0,	12000000, mux_clk_m,	PERIPH_ON_APB),
 	PERIPH_CLK("extern1",	"extern1",		NULL,	120,	0x3ec,	216000000, mux_plla_clk32_pllp_clkm_plle,	MUX | MUX8 | DIV_U71),
 	PERIPH_CLK("extern2",	"extern2",		NULL,	121,	0x3f0,	216000000, mux_plla_clk32_pllp_clkm_plle,	MUX | MUX8 | DIV_U71),
 	PERIPH_CLK("extern3",	"extern3",		NULL,	122,	0x3f4,	216000000, mux_plla_clk32_pllp_clkm_plle,	MUX | MUX8 | DIV_U71),
@@ -6643,29 +6672,29 @@ struct clk tegra_list_clks[] = {
 	SHARED_CLK("sbc5.sclk", "tegra11-spi.4",	"sclk", &tegra_clk_sbus_cmplx, NULL, 0, 0),
 	SHARED_CLK("sbc6.sclk", "tegra11-spi.5",	"sclk", &tegra_clk_sbus_cmplx, NULL, 0, 0),
 
-	SHARED_CLK("avp.emc",	"tegra-avp",		"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("cpu.emc",	"cpu",			"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("disp1.emc",	"tegradc.0",		"emc",	&tegra_clk_emc, NULL, 0, SHARED_BW),
-	SHARED_CLK("disp2.emc",	"tegradc.1",		"emc",	&tegra_clk_emc, NULL, 0, SHARED_BW),
-	SHARED_CLK("hdmi.emc",	"hdmi",			"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("usbd.emc",	"tegra-udc.0",		"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("usb1.emc",	"tegra-ehci.0",		"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("usb2.emc",	"tegra-ehci.1",		"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("usb3.emc",	"tegra-ehci.2",		"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("mon.emc",	"tegra_actmon",		"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("cap.emc",	"cap.emc",		NULL,	&tegra_clk_emc, NULL, 0, SHARED_CEILING),
-	SHARED_CLK("cap.throttle.emc", "cap_throttle",	NULL,	&tegra_clk_emc, NULL, 0, SHARED_CEILING),
-	SHARED_CLK("3d.emc",	"tegra_gr3d",		"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("2d.emc",	"tegra_gr2d",		"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("msenc.emc",	"tegra_msenc",		"emc",	&tegra_clk_emc, NULL, 0, SHARED_BW),
-	SHARED_CLK("tsec.emc",	"tegra_tsec",		"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("sdmmc4.emc", "sdhci-tegra.3",	"emc",	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("camera.emc", "vi",			"emc",	&tegra_clk_emc, NULL, 0, SHARED_BW),
-	SHARED_CLK("iso.emc",	"iso",			"emc",	&tegra_clk_emc, NULL, 0, SHARED_BW),
-	SHARED_CLK("floor.emc",	"floor.emc",		NULL,	&tegra_clk_emc, NULL, 0, 0),
-	SHARED_CLK("override.emc", "override.emc",	NULL,	&tegra_clk_emc, NULL, 0, SHARED_OVERRIDE),
-	SHARED_CLK("edp.emc",	"edp.emc",		NULL,	&tegra_clk_emc, NULL, 0, SHARED_CEILING),
-	SHARED_CLK("battery.emc", "battery_edp",	"emc",	&tegra_clk_emc, NULL, 0, SHARED_CEILING),
+	SHARED_EMC_CLK("avp.emc",	"tegra-avp",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("cpu.emc",	"cpu",		"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("disp1.emc",	"tegradc.0",	"emc",	&tegra_clk_emc, NULL, 0, SHARED_ISO_BW, BIT(EMC_USER_DC)),
+	SHARED_EMC_CLK("disp2.emc",	"tegradc.1",	"emc",	&tegra_clk_emc, NULL, 0, SHARED_ISO_BW, BIT(EMC_USER_DC)),
+	SHARED_EMC_CLK("hdmi.emc",	"hdmi",		"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("usbd.emc",	"tegra-udc.0",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("usb1.emc",	"tegra-ehci.0",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("usb2.emc",	"tegra-ehci.1",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("usb3.emc",	"tegra-ehci.2",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("mon.emc",	"tegra_actmon",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("cap.emc",	"cap.emc",	NULL,	&tegra_clk_emc, NULL, 0, SHARED_CEILING, 0),
+	SHARED_EMC_CLK("cap.throttle.emc", "cap_throttle", NULL, &tegra_clk_emc, NULL, 0, SHARED_CEILING, 0),
+	SHARED_EMC_CLK("3d.emc",	"tegra_gr3d",	"emc",	&tegra_clk_emc, NULL, 0, 0,		BIT(EMC_USER_3D)),
+	SHARED_EMC_CLK("2d.emc",	"tegra_gr2d",	"emc",	&tegra_clk_emc, NULL, 0, 0,		BIT(EMC_USER_2D)),
+	SHARED_EMC_CLK("msenc.emc",	"tegra_msenc",	"emc",	&tegra_clk_emc, NULL, 0, SHARED_BW,	BIT(EMC_USER_MSENC)),
+	SHARED_EMC_CLK("tsec.emc",	"tegra_tsec",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("sdmmc4.emc", "sdhci-tegra.3",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("camera.emc", "vi",		"emc",	&tegra_clk_emc, NULL, 0, SHARED_ISO_BW,	BIT(EMC_USER_VI)),
+	SHARED_EMC_CLK("iso.emc",	"iso",		"emc",	&tegra_clk_emc, NULL, 0, SHARED_ISO_BW, 0),
+	SHARED_EMC_CLK("floor.emc",	"floor.emc",	NULL,	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("override.emc", "override.emc",	NULL,	&tegra_clk_emc, NULL, 0, SHARED_OVERRIDE, 0),
+	SHARED_EMC_CLK("edp.emc",	"edp.emc",	NULL,	&tegra_clk_emc, NULL, 0, SHARED_CEILING, 0),
+	SHARED_EMC_CLK("battery.emc", "battery_edp",	"emc",	&tegra_clk_emc, NULL, 0, SHARED_CEILING, 0),
 
 #ifdef CONFIG_TEGRA_DUAL_CBUS
 	DUAL_CBUS_CLK("3d.cbus",	"tegra_gr3d",		"gr3d",	&tegra_clk_c2bus, "3d",  0, 0),
@@ -6715,30 +6744,47 @@ static struct clk tegra_xusb_source_clks[] = {
 	PERIPH_CLK("xusb_fs_src",	XUSB_ID, "fs_src",	143,	0x608,	 48000000, mux_clkm_48M_pllp_480M,	MUX | DIV_U71 | DIV_U71_INT | PERIPH_NO_RESET),
 	PERIPH_CLK("xusb_ss_src",	XUSB_ID, "ss_src",	143,	0x610,	120000000, mux_clkm_pllre_clk32_480M_pllc_ref,	MUX | MUX8 | DIV_U71 | DIV_U71_INT | PERIPH_NO_RESET),
 	PERIPH_CLK("xusb_dev_src",	XUSB_ID, "dev_src",	95,	0x60c,	120000000, mux_clkm_pllp_pllc_pllre,	MUX | MUX8 | DIV_U71 |  DIV_U71_INT | PERIPH_NO_RESET | PERIPH_ON_APB),
-	{
-		.name      = "xusb_hs_src",
-		.lookup    = {
-			.dev_id    = XUSB_ID,
-			.con_id	   = "hs_src",
-		},
-		.ops       = &tegra_periph_clk_ops,
-		.reg       = 0x610,
-		.inputs    = mux_pllu_60M,
-		.flags     = PLLU | PERIPH_NO_ENB,
-		.max_rate  = 60000000,
-		.u.periph = {
-			.src_mask  = 0x1 << 25,
-			.src_shift = 25,
-		},
+	SHARED_EMC_CLK("xusb.emc",	XUSB_ID, "emc",	&tegra_clk_emc,	NULL,	0,	SHARED_BW, 0),
+};
+
+static struct clk tegra_xusb_ss_div2 = {
+	.name      = "xusb_ss_div2",
+	.ops       = &tegra_clk_m_div_ops,
+	.parent    = &tegra_xusb_source_clks[3],
+	.mul       = 1,
+	.div       = 2,
+	.state     = OFF,
+	.max_rate  = 60000000,
+};
+
+static struct clk_mux_sel mux_ss_div2_pllu_60M[] = {
+	{ .input = &tegra_xusb_ss_div2, .value = 0},
+	{ .input = &tegra_pll_u_60M,    .value = 1},
+	{ 0, 0},
+};
+
+static struct clk tegra_xusb_hs_src = {
+	.name      = "xusb_hs_src",
+	.lookup    = {
+		.dev_id    = XUSB_ID,
+		.con_id	   = "hs_src",
 	},
-	SHARED_CLK("xusb.emc",	"XUSB_ID",		"emc",	&tegra_clk_emc, NULL, 0, SHARED_BW),
+	.ops       = &tegra_periph_clk_ops,
+	.reg       = 0x610,
+	.inputs    = mux_ss_div2_pllu_60M,
+	.flags     = PLLU | PERIPH_NO_ENB,
+	.max_rate  = 60000000,
+	.u.periph = {
+		.src_mask  = 0x1 << 25,
+		.src_shift = 25,
+	},
 };
 
 static struct clk_mux_sel mux_xusb_host[] = {
 	{ .input = &tegra_xusb_source_clks[0], .value = 0},
 	{ .input = &tegra_xusb_source_clks[1], .value = 1},
 	{ .input = &tegra_xusb_source_clks[2], .value = 2},
-	{ .input = &tegra_xusb_source_clks[5], .value = 5},
+	{ .input = &tegra_xusb_hs_src,         .value = 5},
 	{ 0, 0},
 };
 
@@ -6761,7 +6807,6 @@ static struct clk tegra_xusb_coupled_clks[] = {
 	PERIPH_CLK_EX("xusb_ss",   XUSB_ID, "ss",  156,	0, 350000000, mux_xusb_ss,   0,	&tegra_clk_coupled_gate_ops),
 	PERIPH_CLK_EX("xusb_dev",  XUSB_ID, "dev",  95, 0, 120000000, mux_xusb_dev,  0,	&tegra_clk_coupled_gate_ops),
 };
-
 
 #define CLK_DUPLICATE(_name, _dev, _con)		\
 	{						\
@@ -7554,6 +7599,20 @@ static struct syscore_ops tegra_clk_syscore_ops = {
 };
 #endif
 
+static void tegra11_init_xusb_clocks(void)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(tegra_xusb_source_clks); i++)
+		tegra11_init_one_clock(&tegra_xusb_source_clks[i]);
+
+	tegra11_init_one_clock(&tegra_xusb_ss_div2);
+	tegra11_init_one_clock(&tegra_xusb_hs_src);
+
+	for (i = 0; i < ARRAY_SIZE(tegra_xusb_coupled_clks); i++)
+		tegra11_init_one_clock(&tegra_xusb_coupled_clks[i]);
+}
+
 void __init tegra11x_init_clocks(void)
 {
 	int i;
@@ -7588,11 +7647,19 @@ void __init tegra11x_init_clocks(void)
 	for (i = 0; i < ARRAY_SIZE(tegra_clk_out_list); i++)
 		tegra11_init_one_clock(&tegra_clk_out_list[i]);
 
-	for (i = 0; i < ARRAY_SIZE(tegra_xusb_source_clks); i++)
-		tegra11_init_one_clock(&tegra_xusb_source_clks[i]);
+	tegra11_init_xusb_clocks();
 
-	for (i = 0; i < ARRAY_SIZE(tegra_xusb_coupled_clks); i++)
-		tegra11_init_one_clock(&tegra_xusb_coupled_clks[i]);
+	for (i = 0; i < ARRAY_SIZE(tegra_clk_duplicates); i++) {
+		c = tegra_get_clock_by_name(tegra_clk_duplicates[i].name);
+		if (!c) {
+			pr_err("%s: Unknown duplicate clock %s\n", __func__,
+				tegra_clk_duplicates[i].name);
+			continue;
+		}
+
+		tegra_clk_duplicates[i].lookup.clk = c;
+		clkdev_add(&tegra_clk_duplicates[i].lookup);
+	}
 
 	/* Initialize to default */
 	tegra_init_cpu_edp_limits(0);
@@ -7600,4 +7667,12 @@ void __init tegra11x_init_clocks(void)
 #ifdef CONFIG_PM_SLEEP
 	register_syscore_ops(&tegra_clk_syscore_ops);
 #endif
+
 }
+
+static int __init tegra11x_clk_late_init(void)
+{
+	clk_disable(&tegra_pll_re_vco);
+	return 0;
+}
+late_initcall(tegra11x_clk_late_init);
