@@ -127,8 +127,6 @@ extern struct platform_device tegra_smmu_device;
 extern struct platform_device tegra_wdt_device;
 #else
 extern struct platform_device tegra_wdt0_device;
-extern struct platform_device tegra_wdt1_device;
-extern struct platform_device tegra_wdt2_device;
 #endif
 extern struct platform_device tegra_pwfm0_device;
 extern struct platform_device tegra_pwfm1_device;

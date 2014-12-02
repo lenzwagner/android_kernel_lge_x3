@@ -307,14 +307,14 @@ static int dsi_s_wqxga_10_1_bl_notify(struct device *unused, int brightness)
 {
 	int cur_sd_brightness = atomic_read(&sd_brightness);
 
+	/* SD brightness is a percentage */
+	brightness = (brightness * cur_sd_brightness) / 255;
+
 	/* Apply any backlight response curve */
 	if (brightness > 255)
 		pr_info("Error: Brightness > 255!\n");
 	else
 		brightness = dsi_s_wqxga_10_1_bl_output_measured[brightness];
-
-	/* SD brightness is a percentage */
-	brightness = (brightness * cur_sd_brightness) / 255;
 
 	return brightness;
 }
@@ -335,7 +335,7 @@ static struct platform_pwm_backlight_data dsi_s_wqxga_10_1_bl_data = {
 };
 
 static struct platform_device __maybe_unused
-		dsi_s_wqxga_10_1_bl_device __initdata = {
+		dsi_s_wqxga_10_1_bl_device = {
 	.name	= "pwm-backlight",
 	.id	= -1,
 	.dev	= {

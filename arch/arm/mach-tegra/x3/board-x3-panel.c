@@ -47,6 +47,8 @@
 #include "../tegra3_host1x_devices.h"
 #include "../../../../../drivers/video/tegra/ssd2825/ssd2825_bridge.h"
 
+#define DC_CTRL_MODE    TEGRA_DC_OUT_ONE_SHOT_MODE
+
 #include "../wakeups-t3.h"	//                                                                  
 #if defined(CONFIG_MACH_RGB_CONVERTOR_SPI)
 extern int ssd2825_bridge_enable(void);

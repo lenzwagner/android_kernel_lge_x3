@@ -39,9 +39,9 @@
 #include "cpu-tegra.h"
 #include "clock.h"
 
-#define INITIAL_STATE		TEGRA_CPQ_DISABLED
-#define UP_DELAY_MS		70
-#define DOWN_DELAY_MS		500
+#define INITIAL_STATE		TEGRA_CPQ_ENABLED
+#define UP_DELAY_MS		100	//70
+#define DOWN_DELAY_MS		400	//2000
 #define HOTPLUG_DELAY_MS	100
 
 static struct mutex *tegra_cpu_lock;
@@ -93,7 +93,7 @@ enum {
 	TEGRA_CPQ_LP,
 };
 
-static int cpq_target_state;
+static int cpq_target_state = INITIAL_STATE;
 static int cpq_target_cluster_state;
 
 static int cpq_state;
