@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/tegra_emc.h
  *
- * Copyright (C) 2013 NVIDIA Corporation
+ * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,8 @@
 #ifndef _MACH_TEGRA_TEGRA_EMC_H
 #define _MACH_TEGRA_TEGRA_EMC_H
 
+#define TEGRA_EMC_ISO_USE_CASES_MAX_NUM		8
+
 extern u8 tegra_emc_bw_efficiency;
 
 enum {
@@ -28,8 +30,28 @@ enum {
 	DRAM_OVER_TEMP_REFRESH,
 };
 
-struct clk;
+enum emc_user_id {
+	EMC_USER_DC = 0,
+	EMC_USER_VI,
+	EMC_USER_MSENC,
+	EMC_USER_2D,
+	EMC_USER_3D,
 
+	EMC_USER_NUM,
+};
+
+struct emc_iso_usage {
+	u32 emc_usage_flags;
+	u8 iso_usage_share;
+};
+
+struct clk;
+struct dentry;
+
+void tegra_emc_iso_usage_table_init(struct emc_iso_usage *table, int size);
+int  tegra_emc_iso_usage_debugfs_init(struct dentry *emc_debugfs_root);
+unsigned long tegra_emc_apply_efficiency(unsigned long total_bw,
+	unsigned long iso_bw, unsigned long max_rate, u32 usage_flags);
 void tegra_emc_dram_type_init(struct clk *c);
 int tegra_emc_get_dram_type(void);
 int tegra_emc_get_dram_temperature(void);

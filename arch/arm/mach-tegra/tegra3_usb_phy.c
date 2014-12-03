@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/tegra3_usb_phy.c
  *
- * Copyright (c) 2012, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
  *
  *
  * This software is licensed under the terms of the GNU General Public
@@ -607,7 +607,7 @@ static void utmip_setup_pmc_wake_detect(struct tegra_usb_phy *phy)
 	/* config debouncer */
 	val = readl(pmc_base + PMC_USB_DEBOUNCE);
 	val &= ~UTMIP_LINE_DEB_CNT(~0);
-	val |= UTMIP_LINE_DEB_CNT(4);
+	val |= UTMIP_LINE_DEB_CNT(1);
 	writel(val, pmc_base + PMC_USB_DEBOUNCE);
 
 	/* Make sure nothing is happening on the line with respect to PMC */
@@ -1152,6 +1152,7 @@ static void utmi_phy_close(struct tegra_usb_phy *phy)
 {
 	unsigned long val;
 	void __iomem *base = phy->regs;
+	void __iomem *pmc_base = IO_ADDRESS(TEGRA_PMC_BASE);
 
 	DBG("%s inst:[%d]\n", __func__, phy->inst);
 
@@ -1161,6 +1162,10 @@ static void utmi_phy_close(struct tegra_usb_phy *phy)
 		val &= ~USB_PHY_CLK_VALID_INT_ENB;
 		writel(val, base + USB_SUSP_CTRL);
 	}
+
+	val = readl(pmc_base + PMC_SLEEP_CFG);
+	if (val & UTMIP_MASTER_ENABLE(phy->inst))
+		utmip_phy_disable_pmc_bus_ctrl(phy);
 
 	clk_put(phy->utmi_pad_clk);
 }
@@ -1458,6 +1463,10 @@ static int utmi_phy_power_off(struct tegra_usb_phy *phy)
 			pr_err("%s: timeout waiting for USB_USBSTS_HCH\n", __func__);
 		}
 		utmip_setup_pmc_wake_detect(phy);
+
+		val = readl(base + USB_SUSP_CTRL);
+		val &= ~USB_WAKE_ON_CNNT_EN_DEV;
+		writel(val, base + USB_SUSP_CTRL);
 	}
 
 	if (!phy->pdata->u_data.host.hot_plug) {
@@ -1726,15 +1735,28 @@ static int utmi_phy_resume(struct tegra_usb_phy *phy)
 {
 	int status = 0;
 	unsigned long val;
+	int port_connected = 0;
+	int is_lp0;
 	void __iomem *base = phy->regs;
 
 	DBG("%s(%d) inst:[%d]\n", __func__, __LINE__, phy->inst);
 	if (phy->pdata->op_mode == TEGRA_USB_OPMODE_HOST) {
-		if (phy->port_speed < USB_PHY_PORT_SPEED_UNKNOWN) {
+		if (readl(base + USB_ASYNCLISTADDR) &&
+			!phy->pdata->u_data.host.power_off_on_suspend)
+			return 0;
+
+		val = readl(base + USB_PORTSC);
+		port_connected = val & USB_PORTSC_CCS;
+		is_lp0 = !(readl(base + USB_ASYNCLISTADDR));
+
+		if ((phy->port_speed < USB_PHY_PORT_SPEED_UNKNOWN) &&
+			(port_connected ^ is_lp0)) {
 			utmi_phy_restore_start(phy);
 			usb_phy_bringup_host_controller(phy);
 			utmi_phy_restore_end(phy);
 		} else {
+			utmip_phy_disable_pmc_bus_ctrl(phy);
+
 			/* device is plugged in when system is in LP0 */
 			/* bring up the controller from LP0*/
 			val = readl(base + USB_USBCMD);
@@ -2802,6 +2824,7 @@ static int ulpi_null_phy_restore(struct tegra_usb_phy *phy)
 			pr_warn("phy restore timeout\n");
 			return 1;
 		}
+		mdelay(1);
 	}
 
 	return 0;

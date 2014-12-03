@@ -360,9 +360,9 @@ static struct dvfs core_dvfs_table[] = {
 	CORE_DVFS("xusb_falcon_src", -1, -1, 1, KHZ,  1, 336000, 336000, 336000,  336000,  336000,  336000,  336000,  336000),
 	CORE_DVFS("xusb_host_src",   -1, -1, 1, KHZ,  1, 112000, 112000, 112000,  112000,  112000,  112000,  112000,  112000),
 	CORE_DVFS("xusb_dev_src",    -1, -1, 1, KHZ,  1,  58300,  58300, 112000,  112000,  112000,  112000,  112000,  112000),
-	CORE_DVFS("xusb_ss_src",     -1, -1, 1, KHZ,  1, 120000, 120000, 120000,  120000,  120000,  120000,  120000,  120000),
+	CORE_DVFS("xusb_ss_src",     -1, -1, 1, KHZ,  1, 122400, 122400, 122400,  122400,  122400,  122400,  122400,  122400),
 	CORE_DVFS("xusb_fs_src",     -1, -1, 1, KHZ,  1,  48000,  48000,  48000,   48000,   48000,   48000,   48000,   48000),
-	CORE_DVFS("xusb_hs_src",     -1, -1, 1, KHZ,  1,  60000,  60000,  60000,   60000,   60000,   60000,   60000,   60000),
+	CORE_DVFS("xusb_hs_src",     -1, -1, 1, KHZ,  1,  61200,  61200,  61200,   61200,   61200,   61200,   61200,   61200),
 #endif
 };
 
@@ -825,6 +825,7 @@ static struct core_dvfs_cap_table tegra11_core_cap_table[] = {
 #endif
 	{ .cap_name = "cap.sclk" },
 	{ .cap_name = "cap.emc" },
+	{ .cap_name = "cap.host1x" },
 };
 
 /*

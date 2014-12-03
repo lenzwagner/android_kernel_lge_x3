@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/tegra11_clocks.c
  *
- * Copyright (C) 2011-2013 NVIDIA Corporation
+ * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,6 +36,7 @@
 #include <mach/edp.h>
 #include <mach/hardware.h>
 #include <mach/mc.h>
+#include <mach/powergate.h>
 
 #include "clock.h"
 #include "fuse.h"
@@ -426,6 +427,8 @@
 #define	PLLE_SS_INCINTRV_MASK		(0x3f<<PLLE_SS_INCINTRV_SHIFT)
 #define	PLLE_SS_INC_SHIFT		16
 #define	PLLE_SS_INC_MASK		(0xff<<PLLE_SS_INC_SHIFT)
+#define	PLLE_SS_CNTL_INVERT		(0x1 << 15)
+#define	PLLE_SS_CNTL_CENTER		(0x1 << 14)
 #define	PLLE_SS_CNTL_SSC_BYP		(0x1 << 12)
 #define	PLLE_SS_CNTL_INTERP_RESET	(0x1 << 11)
 #define	PLLE_SS_CNTL_BYPASS_SS		(0x1 << 10)
@@ -850,8 +853,10 @@ static void tegra11_super_clk_init(struct clk *c)
 		c->mul = 2;
 		c->div = 2;
 
-		/* Make sure 7.1 divider is 1:1, clear s/w skipper control */
-		/* FIXME: set? preserve? thermal h/w skipper control */
+		/*
+		 * Make sure 7.1 divider is 1:1; clear h/w skipper control -
+		 * it will be enabled by soctherm later
+		 */
 		val = clk_readl(c->reg + SUPER_CLK_DIVIDER);
 		BUG_ON(val & SUPER_CLOCK_DIV_U71_MASK);
 		val = 0;
@@ -1244,7 +1249,8 @@ static int tegra11_cpu_clk_set_rate(struct clk *c, unsigned long rate)
 	if (c->dvfs) {
 		if (!c->dvfs->dvfs_rail)
 			return -ENOSYS;
-		else if ((!c->dvfs->dvfs_rail->reg) && (old_rate < rate)) {
+		else if ((!c->dvfs->dvfs_rail->reg) && (old_rate < rate) &&
+			 (c->boot_rate < rate)) {
 			WARN(1, "Increasing CPU rate while regulator is not"
 				" ready is not allowed\n");
 			return -ENOSYS;
@@ -1348,6 +1354,7 @@ static int tegra11_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 	const struct clk_mux_sel *sel;
 	unsigned long rate = clk_get_rate(c->parent);
 	struct clk *dfll = c->parent->u.cpu.dynamic ? : p->u.cpu.dynamic;
+	struct clk *p_source_old = NULL;
 	struct clk *p_source;
 
 	pr_debug("%s: %s %s\n", __func__, c->name, p->name);
@@ -1420,23 +1427,34 @@ static int tegra11_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 		ret = clk_set_rate(p_source, rate);
 		if (ret)
 			goto abort;
-	} else if (p->parent->parent == dfll) {
+	} else if ((p->parent->parent == dfll) ||
+		   (p->dvfs && tegra_dvfs_is_dfll_range(p->dvfs, rate))) {
 		/* LP => G (DFLL selected as clock source) switch:
 		 * set DFLL rate ready (DFLL is still disabled)
 		 * (set target p_source as dfll, G source is already selected)
 		 */
 		p_source = dfll;
-		ret = clk_set_rate(p_source, rate);
+		ret = clk_set_rate(dfll,
+			tegra_dvfs_rail_is_dfll_mode(tegra_cpu_rail) ? rate :
+			max(rate, p->dvfs->dfll_data.use_dfll_rate_min));
 		if (ret)
 			goto abort;
+
+		ret = tegra_dvfs_rail_dfll_mode_set_cold(tegra_cpu_rail);
+		if (ret)
+			goto abort;
+
 	} else
-		/* DFLL is not selcted on either side of the switch:
+		/* DFLL is not selected on either side of the switch:
 		 * set target p_source equal to current clock source
 		 */
 		p_source = c->parent->parent->parent;
 
 	/* Switch new parent to target clock source if necessary */
 	if (p->parent->parent != p_source) {
+		clk_enable(p->parent->parent);
+		clk_enable(p->parent);
+		p_source_old = p->parent->parent;
 		ret = clk_set_parent(p->parent, p_source);
 		if (ret) {
 			pr_err("%s: Failed to set parent %s for %s\n",
@@ -1463,20 +1481,42 @@ static int tegra11_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 	/* Disabling old parent scales old mode voltage rail */
 	if (c->refcnt && c->parent)
 		clk_disable(c->parent);
+	if (p_source_old) {
+		clk_disable(p->parent);
+		clk_disable(p_source_old);
+	}
 
 	clk_reparent(c, p);
 
-	/* Lock DFLL now (resume closed loop VDD_CPU control) */
-	if (p_source == dfll)
-		tegra_clk_cfg_ex(dfll, TEGRA_CLK_DFLL_LOCK, 1);
+	/*
+	 * Lock DFLL now (resume closed loop VDD_CPU control).
+	 * G CPU operations are resumed on DFLL if it was the last G CPU
+	 * clock source, or if resume rate is in DFLL usage range in case
+	 * when auto-switch between PLL and DFLL is enabled.
+	 */
+	if (p_source == dfll) {
+		if (tegra_dvfs_rail_is_dfll_mode(tegra_cpu_rail)) {
+			tegra_clk_cfg_ex(dfll, TEGRA_CLK_DFLL_LOCK, 1);
+		} else {
+			clk_set_rate(dfll, rate);
+			tegra_clk_cfg_ex(dfll, TEGRA_CLK_DFLL_LOCK, 1);
+			tegra_dvfs_dfll_mode_set(p->dvfs, rate);
+		}
+	}
 
 	tegra_dvfs_rail_mode_updating(tegra_cpu_rail, false);
 	return 0;
 
 abort:
 	/* Re-lock DFLL if necessary after aborted switch */
-	if (c->parent->parent->parent == dfll)
+	if (c->parent->parent->parent == dfll) {
+		clk_set_rate(dfll, rate);
 		tegra_clk_cfg_ex(dfll, TEGRA_CLK_DFLL_LOCK, 1);
+	}
+	if (p_source_old) {
+		clk_disable(p->parent);
+		clk_disable(p_source_old);
+	}
 	tegra_dvfs_rail_mode_updating(tegra_cpu_rail, false);
 
 	pr_err("%s: aborted switch from %s to %s\n",
@@ -1800,15 +1840,31 @@ static int tegra11_pll_clk_wait_for_lock(
 #ifndef CONFIG_TEGRA_SIMULATION_PLATFORM
 #if USE_PLL_LOCK_BITS
 	int i;
+	u32 val = 0;
+
 	for (i = 0; i < (c->u.pll.lock_delay / PLL_PRE_LOCK_DELAY + 1); i++) {
 		udelay(PLL_PRE_LOCK_DELAY);
-		if ((clk_readl(lock_reg) & lock_bits) == lock_bits) {
+		val = clk_readl(lock_reg);
+		if ((val & lock_bits) == lock_bits) {
 			udelay(PLL_POST_LOCK_DELAY);
 			return 0;
 		}
 	}
-	pr_err("Timed out waiting for lock bit on pll %s\n", c->name);
-	return -1;
+
+	/* PLLCX lock bits may fluctuate after the lock - don't report timeout
+	   in this case (phase lock bit happens to uniquely identify PLLCX) */
+	if (lock_bits & PLLCX_BASE_PHASE_LOCK) {
+		pr_debug("Timed out waiting for %s lock bit ([0x%x] = 0x%x)\n",
+			 c->name, lock_reg, val);
+		return 0;
+	} else if ((c->flags & PLLD) &&
+			tegra_powergate_check_clamping(TEGRA_POWERGATE_DISA)) {
+		pr_debug("Waiting for %s lock.\n", c->name);
+	} else {
+		pr_err("Timed out waiting for %s lock bit ([0x%x] = 0x%x)\n",
+		       c->name, lock_reg, val);
+		return -ETIMEDOUT;
+	}
 #endif
 	udelay(c->u.pll.lock_delay);
 #endif
@@ -2025,6 +2081,59 @@ static u8 get_pll_cpcon(struct clk *c, u16 n)
 	return c->u.pll.cpcon_default ? : OUT_OF_TABLE_CPCON;
 }
 
+/* Special comparison frequency selection for PLLD at 12MHz refrence rate */
+unsigned long get_pll_cfreq_special(struct clk *c, unsigned long input_rate,
+				   unsigned long rate, unsigned long *vco)
+{
+	if (!(c->flags & PLLD) || (input_rate != 12000000))
+		return 0;
+
+	*vco = c->u.pll.vco_min;
+
+	if (rate <= 250000000)
+		return 4000000;
+	else if (rate <= 500000000)
+		return 2000000;
+	else
+		return 1000000;
+}
+
+/* Common comparison frequency selection */
+unsigned long get_pll_cfreq_common(struct clk *c, unsigned long input_rate,
+				   unsigned long rate, unsigned long *vco)
+{
+	unsigned long cfreq = 0;
+
+	switch (input_rate) {
+	case 12000000:
+	case 26000000:
+		cfreq = (rate <= 1000000 * 1000) ? 1000000 : 2000000;
+		break;
+	case 13000000:
+		cfreq = (rate <= 1000000 * 1000) ? 1000000 : 2600000;
+		break;
+	case 16800000:
+	case 19200000:
+		cfreq = (rate <= 1200000 * 1000) ? 1200000 : 2400000;
+		break;
+	default:
+		if (c->parent->flags & DIV_U71_FIXED) {
+			/* PLLP_OUT1 rate is not in PLLA table */
+			pr_warn("%s: failed %s ref/out rates %lu/%lu\n",
+				__func__, c->name, input_rate, rate);
+			cfreq = input_rate/(input_rate/1000000);
+			break;
+		}
+		pr_err("%s: Unexpected reference rate %lu\n",
+		       __func__, input_rate);
+		BUG();
+	}
+
+	/* Raise VCO to guarantee 0.5% accuracy, and vco min boundary */
+	*vco = max(200 * cfreq, c->u.pll.vco_min);
+	return cfreq;
+}
+
 static int tegra11_pll_clk_set_rate(struct clk *c, unsigned long rate)
 {
 	u32 val, p_div, old_base;
@@ -2069,33 +2178,12 @@ static int tegra11_pll_clk_set_rate(struct clk *c, unsigned long rate)
 		BUG_ON(c->flags & PLLU);
 		sel = &cfg;
 
-		switch (input_rate) {
-		case 12000000:
-		case 26000000:
-			cfreq = (rate <= 1000000 * 1000) ? 1000000 : 2000000;
-			break;
-		case 13000000:
-			cfreq = (rate <= 1000000 * 1000) ? 1000000 : 2600000;
-			break;
-		case 16800000:
-		case 19200000:
-			cfreq = (rate <= 1200000 * 1000) ? 1200000 : 2400000;
-			break;
-		default:
-			if (c->parent->flags & DIV_U71_FIXED) {
-				/* PLLP_OUT1 rate is not in PLLA table */
-				pr_warn("%s: failed %s ref/out rates %lu/%lu\n",
-					__func__, c->name, input_rate, rate);
-				cfreq = input_rate/(input_rate/1000000);
-				break;
-			}
-			pr_err("%s: Unexpected reference rate %lu\n",
-			       __func__, input_rate);
-			BUG();
-		}
+		/* If available, use pll specific algorithm to select comparison
+		   frequency, and vco target */
+		cfreq = get_pll_cfreq_special(c, input_rate, rate, &vco);
+		if (!cfreq)
+			cfreq = get_pll_cfreq_common(c, input_rate, rate, &vco);
 
-		/* Raise VCO to guarantee 0.5% accuracy, and vco min boundary */
-		vco = max(200 * cfreq, c->u.pll.vco_min);
 		for (cfg.output_rate = rate; cfg.output_rate < vco; p_div++)
 			cfg.output_rate <<= 1;
 
@@ -3397,6 +3485,7 @@ static int tegra11_plle_clk_enable(struct clk *c)
 		c, c->reg + PLL_MISC(c), PLLE_MISC_LOCK);
 #if USE_PLLE_SS
 	val = clk_readl(PLLE_SS_CTRL);
+	val &= ~(PLLE_SS_CNTL_CENTER | PLLE_SS_CNTL_INVERT);
 	val &= ~PLLE_SS_COEFFICIENTS_MASK;
 	val |= PLLE_SS_COEFFICIENTS_VAL;
 	clk_writel(val, PLLE_SS_CTRL);
@@ -3628,8 +3717,11 @@ static int tegra11_pll_div_clk_set_rate(struct clk *c, unsigned long rate);
 static void tegra11_pll_div_clk_init(struct clk *c)
 {
 	if (c->flags & DIV_U71) {
-		u32 divu71;
-		u32 val = clk_readl(c->reg);
+		u32 val, divu71;
+		if (c->parent->state == OFF)
+			c->ops->disable(c);
+
+		val = clk_readl(c->reg);
 		val >>= c->reg_shift;
 		c->state = (val & PLL_OUT_CLKEN) ? ON : OFF;
 		if (!(val & PLL_OUT_RESET_DISABLE))
@@ -3901,7 +3993,7 @@ static int tegra11_periph_clk_enable(struct clk *c)
 	clk_writel_delay(PERIPH_CLK_TO_BIT(c), PERIPH_CLK_TO_ENB_SET_REG(c));
 	if (!(c->flags & PERIPH_NO_RESET) && !(c->flags & PERIPH_MANUAL_RESET)) {
 		if (clk_readl(PERIPH_CLK_TO_RST_REG(c)) & PERIPH_CLK_TO_BIT(c)) {
-			udelay(5);	/* reset propagation delay */
+			udelay(RESET_PROPAGATION_DELAY);
 			clk_writel(PERIPH_CLK_TO_BIT(c), PERIPH_CLK_TO_RST_CLR_REG(c));
 		}
 	}
@@ -4087,6 +4179,153 @@ static struct clk_ops tegra_periph_clk_ops = {
 	.reset			= &tegra11_periph_clk_reset,
 };
 
+/* 1x shared bus ops */
+static long tegra11_1xbus_round_updown(struct clk *c, unsigned long rate,
+					    bool up)
+{
+	int divider;
+	unsigned long source_rate, round_rate;
+	struct clk *new_parent;
+
+	rate = max(rate, c->min_rate);
+
+	new_parent = (rate <= c->u.periph.threshold) ?
+		c->u.periph.pll_low : c->u.periph.pll_high;
+	source_rate = clk_get_rate(new_parent);
+
+	divider = clk_div71_get_divider(source_rate, rate, c->flags,
+		up ? ROUND_DIVIDER_DOWN : ROUND_DIVIDER_UP);
+
+	if (divider < 0)
+		return c->min_rate;
+
+	round_rate = source_rate * 2 / (divider + 2);
+
+	if (round_rate > c->max_rate) {
+		divider += c->flags & DIV_U71_INT ? 2 : 1;
+#if !DIVIDER_1_5_ALLOWED
+		divider = max(2, divider);
+#endif
+		round_rate = source_rate * 2 / (divider + 2);
+	}
+
+	if (new_parent == c->u.periph.pll_high) {
+		/* Prevent oscillation across threshold */
+		if (round_rate <= c->u.periph.threshold)
+			round_rate = c->u.periph.threshold;
+	}
+	return round_rate;
+}
+
+static long tegra11_1xbus_round_rate(struct clk *c, unsigned long rate)
+{
+	return tegra11_1xbus_round_updown(c, rate, true);
+}
+
+static int tegra11_1xbus_set_rate(struct clk *c, unsigned long rate)
+{
+	/* Compensate rate truncating during rounding */
+	return tegra11_periph_clk_set_rate(c, rate + 1);
+}
+
+static int tegra11_clk_1xbus_update(struct clk *c)
+{
+	int ret;
+	struct clk *new_parent;
+	unsigned long rate, old_rate;
+
+	if (detach_shared_bus)
+		return 0;
+
+	rate = tegra11_clk_shared_bus_update(c, NULL, NULL, NULL);
+
+	old_rate = clk_get_rate_locked(c);
+	pr_debug("\n1xbus %s: rate %lu on parent %s: new request %lu\n",
+		 c->name, old_rate, c->parent->name, rate);
+	if (rate == old_rate)
+		return 0;
+
+	if (!c->u.periph.min_div_low || !c->u.periph.min_div_high) {
+		unsigned long r, m = c->max_rate;
+		r = clk_get_rate(c->u.periph.pll_low);
+		c->u.periph.min_div_low = DIV_ROUND_UP(r, m) * c->mul;
+		r = clk_get_rate(c->u.periph.pll_high);
+		c->u.periph.min_div_high = DIV_ROUND_UP(r, m) * c->mul;
+	}
+
+	new_parent = (rate <= c->u.periph.threshold) ?
+		c->u.periph.pll_low : c->u.periph.pll_high;
+
+	/*
+	 * The transition procedure below is guaranteed to switch to the target
+	 * parent/rate without violation of max clock limits. It would attempt
+	 * to switch without dip in bus rate if it is possible, but this cannot
+	 * be guaranteed (example: switch from 408 MHz : 1 to 624 MHz : 2 with
+	 * maximum bus limit 408 MHz will be executed as 408 => 204 => 312 MHz,
+	 * and there is no way to avoid rate dip in this case).
+	 */
+	if (new_parent != c->parent) {
+		int interim_div = 0;
+		/* Switching to pll_high may over-clock bus if current divider
+		   is too small - increase divider to safe value */
+		if ((new_parent == c->u.periph.pll_high) &&
+		    (c->div < c->u.periph.min_div_high))
+			interim_div = c->u.periph.min_div_high;
+
+		/* Switching to pll_low may dip down rate if current divider
+		   is too big - decrease divider as much as we can */
+		if ((new_parent == c->u.periph.pll_low) &&
+		    (c->div > c->u.periph.min_div_low))
+			interim_div = c->u.periph.min_div_low;
+
+		if (interim_div) {
+			u64 interim_rate = old_rate * c->div;
+			do_div(interim_rate, interim_div);
+			ret = clk_set_rate_locked(c, interim_rate);
+			if (ret) {
+				pr_err("Failed to set %s rate to %lu\n",
+				       c->name, (unsigned long)interim_rate);
+				return ret;
+			}
+			pr_debug("1xbus %s: rate %lu on parent %s\n", c->name,
+				 clk_get_rate_locked(c), c->parent->name);
+		}
+
+		ret = clk_set_parent_locked(c, new_parent);
+		if (ret) {
+			pr_err("Failed to set %s parent %s\n",
+			       c->name, new_parent->name);
+			return ret;
+		}
+
+		old_rate = clk_get_rate_locked(c);
+		pr_debug("1xbus %s: rate %lu on parent %s\n", c->name,
+			 old_rate, c->parent->name);
+		if (rate == old_rate)
+			return 0;
+	}
+
+	ret = clk_set_rate_locked(c, rate);
+	if (ret) {
+		pr_err("Failed to set %s rate to %lu\n", c->name, rate);
+		return ret;
+	}
+	pr_debug("1xbus %s: rate %lu on parent %s\n", c->name,
+		 clk_get_rate_locked(c), c->parent->name);
+	return 0;
+
+}
+
+static struct clk_ops tegra_1xbus_clk_ops = {
+	.init			= &tegra11_periph_clk_init,
+	.enable			= &tegra11_periph_clk_enable,
+	.disable		= &tegra11_periph_clk_disable,
+	.set_parent		= &tegra11_periph_clk_set_parent,
+	.set_rate		= &tegra11_1xbus_set_rate,
+	.round_rate		= &tegra11_1xbus_round_rate,
+	.reset			= &tegra11_periph_clk_reset,
+	.shared_bus_update	= &tegra11_clk_1xbus_update,
+};
 
 #if !defined(CONFIG_TEGRA_SIMULATION_PLATFORM)
 /* msenc clock propagation WAR for bug 1005168 */
@@ -4231,6 +4470,16 @@ static struct clk_ops tegra_dsi_clk_ops = {
 	.set_rate		= &tegra11_periph_clk_set_rate,
 	.round_rate		= &tegra11_periph_clk_round_rate,
 	.reset			= &tegra11_periph_clk_reset,
+};
+
+/* xusb common clock gate - enabled on init and never disabled */
+static void tegra11_xusb_gate_clk_init(struct clk *c)
+{
+	tegra11_periph_clk_enable(c);
+}
+
+static struct clk_ops tegra_xusb_gate_clk_ops = {
+	.init    = tegra11_xusb_gate_clk_init,
 };
 
 /* pciex clock support only reset function */
@@ -5012,22 +5261,9 @@ static unsigned long tegra11_clk_shared_bus_update(struct clk *bus,
 		}
 	}
 
-	if (bus->flags & PERIPH_EMC_ENB) {
-		u8 efficiency = tegra_emc_get_iso_share(usage_flags);
-		if (iso_bw && efficiency && (efficiency < 100)) {
-			iso_bw /= efficiency;
-			iso_bw = (iso_bw < bus->max_rate / 100) ?
-					(iso_bw * 100) : bus->max_rate;
-		}
-		bw = max(bw, iso_bw);
-		efficiency = tegra_emc_bw_efficiency;
-
-		if (bw && efficiency && (efficiency < 100)) {
-			bw = bw / efficiency;
-			bw = (bw < bus->max_rate / 100) ?
-				(bw * 100) : bus->max_rate;
-		}
-	}
+	if (bus->flags & PERIPH_EMC_ENB)
+		bw = tegra_emc_apply_efficiency(
+			bw, iso_bw, bus->max_rate, usage_flags);
 
 	rate = override_rate ? : max(rate, bw);
 	ceiling = override_rate ? bus->max_rate : ceiling;
@@ -5467,7 +5703,7 @@ static struct clk tegra_pll_m_out1 = {
 	.parent    = &tegra_pll_m,
 	.reg       = 0x94,
 	.reg_shift = 0,
-	.max_rate  = 600000000,
+	.max_rate  = 1066000000,
 };
 
 static struct clk_pll_freq_table tegra_pll_p_freq_table[] = {
@@ -5585,7 +5821,7 @@ static struct clk_pll_freq_table tegra_pll_d_freq_table[] = {
 	{ 19200000, 216000000, 720, 16, 4, 12},
 	{ 26000000, 216000000, 864, 26, 4, 12},
 
-	{ 12000000, 594000000,  99,  2, 1,  8},
+	{ 12000000, 594000000,  99,  1, 2, 15},
 	{ 13000000, 594000000, 594, 13, 1, 12},
 	{ 16800000, 594000000, 495, 14, 1, 12},
 	{ 19200000, 594000000, 495, 16, 1, 12},
@@ -5769,9 +6005,6 @@ static struct clk tegra_pll_x_out0 = {
 	.parent    = &tegra_pll_x,
 	.max_rate  = 700000000,
 };
-
-/* FIXME: remove; for now, should be always checked-in as "0" */
-#define USE_LP_CPU_TO_TEST_DFLL		0
 
 static struct clk tegra_dfll_cpu = {
 	.name      = "dfll_cpu",
@@ -6041,9 +6274,6 @@ static struct clk_mux_sel mux_cclk_lp[] = {
 	/* { .input = &tegra_pll_c2,	.value = 6}, - no use on tegra11x */
 	/* { .input = &tegra_clk_c3,	.value = 7}, - no use on tegra11x */
 	{ .input = &tegra_pll_x_out0,	.value = 8},
-#if USE_LP_CPU_TO_TEST_DFLL
-	{ .input = &tegra_dfll_cpu,	.value = 15},
-#endif
 	{ .input = &tegra_pll_x,	.value = 8 | SUPER_LP_DIV2_BYPASS},
 	{ 0, 0},
 };
@@ -6108,9 +6338,6 @@ static struct clk tegra_clk_virtual_cpu_lp = {
 	.u.cpu = {
 		.main      = &tegra_pll_x,
 		.backup    = &tegra_pll_p_out4,
-#if USE_LP_CPU_TO_TEST_DFLL
-		.dynamic   = &tegra_dfll_cpu,
-#endif
 		.mode      = MODE_LP,
 	},
 };
@@ -6364,6 +6591,31 @@ static struct clk tegra_clk_emc = {
 	.rate_change_nh = &emc_rate_change_nh,
 };
 
+static struct raw_notifier_head host1x_rate_change_nh;
+
+static struct clk tegra_clk_host1x = {
+	.name      = "host1x",
+	.lookup    = {
+		.dev_id = "host1x",
+	},
+	.ops       = &tegra_1xbus_clk_ops,
+	.reg       = 0x180,
+	.inputs    = mux_pllm_pllc_pllp_plla,
+	.flags     = MUX | DIV_U71 | DIV_U71_INT,
+	.max_rate  = 384000000,
+	.min_rate  = 12000000,
+	.u.periph = {
+		.clk_num   = 28,
+		.pll_low = &tegra_pll_p,
+#ifdef CONFIG_TEGRA_PLLM_SCALED
+		.pll_high = &tegra_pll_c,
+#else
+		.pll_high = &tegra_pll_m,
+#endif
+	},
+	.rate_change_nh = &host1x_rate_change_nh,
+};
+
 #ifdef CONFIG_TEGRA_DUAL_CBUS
 
 static struct raw_notifier_head c2bus_rate_change_nh;
@@ -6566,9 +6818,6 @@ struct clk tegra_list_clks[] = {
 	PERIPH_CLK("sbc4",	"tegra11-spi.3",	NULL,	68,	0x1b4,	52000000,  mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71 | PERIPH_ON_APB),
 	PERIPH_CLK("sbc5",	"tegra11-spi.4",	NULL,	104,	0x3c8,	52000000,  mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71 | PERIPH_ON_APB),
 	PERIPH_CLK("sbc6",	"tegra11-spi.5",	NULL,	105,	0x3cc,	52000000,  mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71 | PERIPH_ON_APB),
-	PERIPH_CLK("sata_oob",	"tegra_sata_oob",	NULL,	123,	0x420,	216000000, mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71 | PERIPH_ON_APB),
-	PERIPH_CLK("sata",	"tegra_sata",		NULL,	124,	0x424,	216000000, mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71 | PERIPH_ON_APB),
-	PERIPH_CLK("sata_cold",	"tegra_sata_cold",	NULL,	129,	0,	48000000,  mux_clk_m,			PERIPH_ON_APB),
 	PERIPH_CLK_EX("ndflash", "tegra_nand",		NULL,	13,	0x160,	240000000, mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71 | PERIPH_ON_APB,	&tegra_nand_clk_ops),
 	PERIPH_CLK("ndspeed",	"tegra_nand_speed",	NULL,	80,	0x3f8,	240000000, mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71 | PERIPH_ON_APB),
 	PERIPH_CLK("vfir",	"vfir",			NULL,	7,	0x168,	72000000,  mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71 | PERIPH_ON_APB),
@@ -6579,6 +6828,7 @@ struct clk tegra_list_clks[] = {
 	PERIPH_CLK("vcp",	"tegra-avp",		"vcp",	29,	0,	250000000, mux_clk_m, 			0),
 	PERIPH_CLK("bsea",	"tegra-avp",		"bsea",	62,	0,	250000000, mux_clk_m, 			0),
 	PERIPH_CLK("bsev",	"tegra-aes",		"bsev",	63,	0,	250000000, mux_clk_m, 			0),
+	PERIPH_CLK("cec",	"tegra_cec",		NULL,	136,	0,	250000000, mux_clk_m,			PERIPH_ON_APB),
 	PERIPH_CLK("vde",	"vde",			NULL,	61,	0x1c8,	600000000, mux_pllp_pllc2_c_c3_pllm_clkm,	MUX | MUX8 | DIV_U71 | DIV_U71_INT),
 	PERIPH_CLK("csite",	"csite",		NULL,	73,	0x1d4,	144000000, mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71 | PERIPH_ON_APB),
 	PERIPH_CLK("la",	"la",			NULL,	76,	0x1f8,	26000000,  mux_pllp_pllc_pllm_clkm,	MUX | DIV_U71 | PERIPH_ON_APB),
@@ -6614,7 +6864,6 @@ struct clk tegra_list_clks[] = {
 	PERIPH_CLK_EX("msenc",	"msenc",		NULL,	91,	0x1f0,	600000000, mux_pllm_pllc2_c_c3_pllp_plla,	MUX | MUX8 | DIV_U71 | DIV_U71_INT, &tegra_msenc_clk_ops),
 #endif
 	PERIPH_CLK("tsec",	"tsec",			NULL,	83,	0x1f4,	600000000, mux_pllp_pllc2_c_c3_pllm_clkm,	MUX | MUX8 | DIV_U71 | DIV_U71_INT),
-	PERIPH_CLK("host1x",	"host1x",		NULL,	28,	0x180,	384000000, mux_pllm_pllc2_c_c3_pllp_plla,	MUX | MUX8 | DIV_U71 | DIV_U71_INT),
 	PERIPH_CLK_EX("dtv",	"dtv",			NULL,	79,	0x1dc,	250000000, mux_clk_m,			PERIPH_ON_APB,	&tegra_dtv_clk_ops),
 	PERIPH_CLK("hdmi",	"hdmi",			NULL,	51,	0x18c,	297000000, mux_pllp_pllm_plld_plla_pllc_plld2_clkm,	MUX | MUX8 | DIV_U71),
 	PERIPH_CLK("disp1",	"tegradc.0",		NULL,	27,	0x138,	600000000, mux_pllp_pllm_plld_plla_pllc_plld2_clkm,	MUX | MUX8),
@@ -6659,7 +6908,10 @@ struct clk tegra_list_clks[] = {
 	SHARED_CLK("usb1.sclk",	"tegra-ehci.0",		"sclk",	&tegra_clk_sbus_cmplx, NULL, 0, 0),
 	SHARED_CLK("usb2.sclk",	"tegra-ehci.1",		"sclk",	&tegra_clk_sbus_cmplx, NULL, 0, 0),
 	SHARED_CLK("usb3.sclk",	"tegra-ehci.2",		"sclk",	&tegra_clk_sbus_cmplx, NULL, 0, 0),
+	SHARED_CLK("sdmmc3.sclk", "sdhci-tegra.2",      "sclk", &tegra_clk_sbus_cmplx, NULL, 0, 0),
+	SHARED_CLK("sdmmc4.sclk", "sdhci-tegra.3",      "sclk", &tegra_clk_sbus_cmplx, NULL, 0, 0),
 	SHARED_CLK("wake.sclk",	"wake_sclk",		"sclk",	&tegra_clk_sbus_cmplx, NULL, 0, 0),
+	SHARED_CLK("camera.sclk",	"vi",		"sclk",	&tegra_clk_sbus_cmplx, NULL, 0, 0),
 	SHARED_CLK("mon.avp",	"tegra_actmon",		"avp",	&tegra_clk_sbus_cmplx, NULL, 0, 0),
 	SHARED_CLK("cap.sclk",	"cap_sclk",		NULL,	&tegra_clk_sbus_cmplx, NULL, 0, SHARED_CEILING),
 	SHARED_CLK("cap.throttle.sclk", "cap_throttle",	NULL,	&tegra_clk_sbus_cmplx, NULL, 0, SHARED_CEILING),
@@ -6688,6 +6940,7 @@ struct clk tegra_list_clks[] = {
 	SHARED_EMC_CLK("2d.emc",	"tegra_gr2d",	"emc",	&tegra_clk_emc, NULL, 0, 0,		BIT(EMC_USER_2D)),
 	SHARED_EMC_CLK("msenc.emc",	"tegra_msenc",	"emc",	&tegra_clk_emc, NULL, 0, SHARED_BW,	BIT(EMC_USER_MSENC)),
 	SHARED_EMC_CLK("tsec.emc",	"tegra_tsec",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("sdmmc3.emc", "sdhci-tegra.2",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
 	SHARED_EMC_CLK("sdmmc4.emc", "sdhci-tegra.3",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
 	SHARED_EMC_CLK("camera.emc", "vi",		"emc",	&tegra_clk_emc, NULL, 0, SHARED_ISO_BW,	BIT(EMC_USER_VI)),
 	SHARED_EMC_CLK("iso.emc",	"iso",		"emc",	&tegra_clk_emc, NULL, 0, SHARED_ISO_BW, 0),
@@ -6732,17 +6985,33 @@ struct clk tegra_list_clks[] = {
 	SHARED_CLK("cap.profile.cbus", "profile.cbus",	NULL,	&tegra_clk_cbus, NULL,  0, SHARED_CEILING),
 	SHARED_CLK("battery.cbus", "battery_edp",	"gpu",	&tegra_clk_cbus, NULL,  0, SHARED_CEILING),
 #endif
+	SHARED_CLK("nv.host1x",	"tegra_host1x",		"host1x", &tegra_clk_host1x, NULL,  0, 0),
+	SHARED_CLK("vi.host1x",	"tegra_vi",		"host1x", &tegra_clk_host1x, NULL,  0, 0),
+	SHARED_CLK("cap.host1x", "cap.host1x",		NULL,	  &tegra_clk_host1x, NULL,  0, SHARED_CEILING),
+	SHARED_CLK("floor.host1x", "floor.host1x",	NULL,	  &tegra_clk_host1x, NULL,  0, 0),
+	SHARED_CLK("override.host1x", "override.host1x", NULL,	  &tegra_clk_host1x, NULL,  0, SHARED_OVERRIDE),
 };
 
 
 /* XUSB clocks */
 #define XUSB_ID "tegra-xhci"
 
+static struct clk tegra_clk_xusb_gate = {
+	.name      = "xusb_gate",
+	.flags     = ENABLE_ON_INIT | PERIPH_NO_RESET,
+	.ops       = &tegra_xusb_gate_clk_ops,
+	.rate      = 12000000,
+	.max_rate  = 48000000,
+	.u.periph = {
+		.clk_num   = 143,
+	},
+};
+
 static struct clk tegra_xusb_source_clks[] = {
 	PERIPH_CLK("xusb_host_src",	XUSB_ID, "host_src",	143,	0x600,	120000000, mux_clkm_pllp_pllc_pllre,	MUX | MUX8 | DIV_U71 | DIV_U71_INT | PERIPH_NO_RESET | PERIPH_ON_APB),
 	PERIPH_CLK("xusb_falcon_src",	XUSB_ID, "falcon_src",	143,	0x604,	350000000, mux_clkm_pllp_pllc_pllre,	MUX | MUX8 | DIV_U71 | DIV_U71_INT | PERIPH_NO_RESET),
 	PERIPH_CLK("xusb_fs_src",	XUSB_ID, "fs_src",	143,	0x608,	 48000000, mux_clkm_48M_pllp_480M,	MUX | DIV_U71 | DIV_U71_INT | PERIPH_NO_RESET),
-	PERIPH_CLK("xusb_ss_src",	XUSB_ID, "ss_src",	143,	0x610,	120000000, mux_clkm_pllre_clk32_480M_pllc_ref,	MUX | MUX8 | DIV_U71 | DIV_U71_INT | PERIPH_NO_RESET),
+	PERIPH_CLK("xusb_ss_src",	XUSB_ID, "ss_src",	143,	0x610,	122400000, mux_clkm_pllre_clk32_480M_pllc_ref,	MUX | MUX8 | DIV_U71 | DIV_U71_INT | PERIPH_NO_RESET),
 	PERIPH_CLK("xusb_dev_src",	XUSB_ID, "dev_src",	95,	0x60c,	120000000, mux_clkm_pllp_pllc_pllre,	MUX | MUX8 | DIV_U71 |  DIV_U71_INT | PERIPH_NO_RESET | PERIPH_ON_APB),
 	SHARED_EMC_CLK("xusb.emc",	XUSB_ID, "emc",	&tegra_clk_emc,	NULL,	0,	SHARED_BW, 0),
 };
@@ -6754,7 +7023,7 @@ static struct clk tegra_xusb_ss_div2 = {
 	.mul       = 1,
 	.div       = 2,
 	.state     = OFF,
-	.max_rate  = 60000000,
+	.max_rate  = 61200000,
 };
 
 static struct clk_mux_sel mux_ss_div2_pllu_60M[] = {
@@ -6773,7 +7042,7 @@ static struct clk tegra_xusb_hs_src = {
 	.reg       = 0x610,
 	.inputs    = mux_ss_div2_pllu_60M,
 	.flags     = PLLU | PERIPH_NO_ENB,
-	.max_rate  = 60000000,
+	.max_rate  = 61200000,
 	.u.periph = {
 		.src_mask  = 0x1 << 25,
 		.src_shift = 25,
@@ -6871,7 +7140,6 @@ struct clk_duplicate tegra_clk_duplicates[] = {
 	CLK_DUPLICATE("vde.cbus", "nvavp", "vde"),
 	CLK_DUPLICATE("i2c5", "tegra_cl_dvfs", "i2c"),
 	CLK_DUPLICATE("cpu_g", "tegra_cl_dvfs", "safe_dvfs"),
-	CLK_DUPLICATE("host1x", "tegra_host1x", "host1x"),
 	CLK_DUPLICATE("epp.cbus", "tegra_isp", "epp"),
 };
 
@@ -6898,6 +7166,7 @@ struct clk *tegra_ptr_clks[] = {
 	&tegra_pll_d_out0,
 	&tegra_pll_d2,
 	&tegra_pll_d2_out0,
+	&tegra_clk_xusb_gate,
 	&tegra_pll_u,
 	&tegra_pll_u_480M,
 	&tegra_pll_u_60M,
@@ -6922,6 +7191,7 @@ struct clk *tegra_ptr_clks[] = {
 	&tegra_clk_cop,
 	&tegra_clk_sbus_cmplx,
 	&tegra_clk_emc,
+	&tegra_clk_host1x,
 #ifdef CONFIG_TEGRA_DUAL_CBUS
 	&tegra_clk_c2bus,
 	&tegra_clk_c3bus,
@@ -7002,16 +7272,19 @@ static void tegra11_pllp_init_dependencies(unsigned long pllp_rate)
 		tegra_pll_p_out1.u.pll_div.default_rate = 28800000;
 		tegra_pll_p_out3.u.pll_div.default_rate = 72000000;
 		tegra_clk_sbus_cmplx.u.system.threshold = 108000000;
+		tegra_clk_host1x.u.periph.threshold = 108000000;
 		break;
 	case 408000000:
 		tegra_pll_p_out1.u.pll_div.default_rate = 9600000;
 		tegra_pll_p_out3.u.pll_div.default_rate = 102000000;
 		tegra_clk_sbus_cmplx.u.system.threshold = 204000000;
+		tegra_clk_host1x.u.periph.threshold = 204000000;
 		break;
 	case 204000000:
 		tegra_pll_p_out1.u.pll_div.default_rate = 4800000;
 		tegra_pll_p_out3.u.pll_div.default_rate = 102000000;
 		tegra_clk_sbus_cmplx.u.system.threshold = 204000000;
+		tegra_clk_host1x.u.periph.threshold = 204000000;
 		break;
 	default:
 		pr_err("tegra: PLLP rate: %lu is not supported\n", pllp_rate);
@@ -7103,9 +7376,11 @@ bool tegra_clk_is_parent_allowed(struct clk *c, struct clk *p)
 	 * source for EMC only when pll_m is fixed, or as a general fixed rate
 	 * clock source for EMC and other peripherals is pll_m is scaled. In
 	 * configuration with single cbus pll_c can be used as a scaled cbus
-	 * clock source only.
+	 * clock source only. No direct use for pll_c by super clocks.
 	 */
 	if ((p == &tegra_pll_c) && (c != &tegra_pll_c_out1)) {
+		if (c->ops == &tegra_super_ops)
+			return false;
 #ifdef CONFIG_TEGRA_DUAL_CBUS
 #ifndef CONFIG_TEGRA_PLLM_SCALED
 		return c->flags & PERIPH_EMC_ENB;
@@ -7119,9 +7394,12 @@ bool tegra_clk_is_parent_allowed(struct clk *c, struct clk *p)
 	 * In any configuration pll_m must not be used as a clock source for
 	 * cbus modules. If pll_m is scaled it can be used as EMC source only.
 	 * Otherwise fixed rate pll_m can be used as clock source for EMC and
-	 * other peripherals.
+	 * other peripherals. No direct use for pll_m by super clocks.
 	 */
 	if ((p == &tegra_pll_m) && (c != &tegra_pll_m_out1)) {
+		if (c->ops == &tegra_super_ops)
+			return false;
+
 		if (c->flags & PERIPH_ON_CBUS)
 			return false;
 #ifdef CONFIG_TEGRA_PLLM_SCALED
@@ -7294,8 +7572,8 @@ unsigned long tegra_emc_to_cpu_ratio(unsigned long cpu_rate)
 
 	/* Vote on memory bus frequency based on cpu frequency;
 	   cpu rate is in kHz, emc rate is in Hz */
-	if (cpu_rate >= 1300000)
-		return emc_max_rate;	/* cpu >= 1.3GHz, emc max */
+	if (cpu_rate >= 1500000)
+		return emc_max_rate;	/* cpu >= 1.5GHz, emc max */
 	else if (cpu_rate >= 975000)
 		return 400000000;	/* cpu >= 975 MHz, emc 400 MHz */
 	else if (cpu_rate >= 725000)
@@ -7429,7 +7707,6 @@ static void tegra11_clk_resume(void)
 	clk_writel(*ctx++, CPU_SOFTRST_CTRL1);
 	clk_writel(*ctx++, CPU_SOFTRST_CTRL2);
 
-	/* FIXME: DFLL? */
 	/* Since we are going to reset devices and switch clock sources in this
 	 * function, plls and secondary dividers is required to be enabled. The
 	 * actual value will be restored back later. Note that boot plls: pllm,
@@ -7504,6 +7781,8 @@ static void tegra11_clk_resume(void)
 		off <= PERIPH_CLK_SOURCE_SOC_THERM; off += 4)
 		clk_writel(*ctx++, off);
 
+	udelay(RESET_PROPAGATION_DELAY);
+
 	clk_writel(*ctx++, RST_DEVICES_L);
 	clk_writel(*ctx++, RST_DEVICES_H);
 	clk_writel(*ctx++, RST_DEVICES_U);
@@ -7517,7 +7796,6 @@ static void tegra11_clk_resume(void)
 	clk_writel(*ctx++, CLK_OUT_ENB_U);
 
 	/* For LP0 resume, clk to lpcpu is required to be on */
-	/* FIXME: should be saved as on? */
 	val = *ctx++;
 	val |= CLK_OUT_ENB_V_CLK_ENB_CPULP_EN;
 	clk_writel(val, CLK_OUT_ENB_V);
@@ -7587,7 +7865,7 @@ static void tegra11_clk_resume(void)
 			p = p->parent;
 	}
 	tegra_emc_timing_invalidate();
-
+	tegra11_pllm_clk_init(&tegra_pll_m); /* Re-init pll_m */
 	tegra11_pll_clk_init(&tegra_pll_u); /* Re-init utmi parameters */
 	tegra11_plle_clk_resume(&tegra_pll_e); /* Restore plle parent as pll_re_vco */
 	tegra11_pllp_clk_resume(&tegra_pll_p); /* Fire a bug if not restored */
@@ -7623,18 +7901,6 @@ void __init tegra11x_init_clocks(void)
 
 	for (i = 0; i < ARRAY_SIZE(tegra_list_clks); i++)
 		tegra11_init_one_clock(&tegra_list_clks[i]);
-
-	for (i = 0; i < ARRAY_SIZE(tegra_clk_duplicates); i++) {
-		c = tegra_get_clock_by_name(tegra_clk_duplicates[i].name);
-		if (!c) {
-			pr_err("%s: Unknown duplicate clock %s\n", __func__,
-				tegra_clk_duplicates[i].name);
-			continue;
-		}
-
-		tegra_clk_duplicates[i].lookup.clk = c;
-		clkdev_add(&tegra_clk_duplicates[i].lookup);
-	}
 
 	for (i = 0; i < ARRAY_SIZE(tegra_sync_source_list); i++)
 		tegra11_init_one_clock(&tegra_sync_source_list[i]);

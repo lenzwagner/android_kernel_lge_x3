@@ -25,10 +25,14 @@
 #include <linux/dma-mapping.h>
 #include <linux/irq.h>
 #include <linux/regulator/consumer.h>
-#include <linux/platform_data/tegra_xusb.h>
+#include <linux/platform_data/tegra_usb.h>
 #include <linux/uaccess.h>
 #include <mach/powergate.h>
 #include <mach/clk.h>
+#include <mach/tegra_usb_pad_ctrl.h>
+#include <mach/tegra_usb_pmc.h>
+#include <mach/mc.h>
+#include <mach/xusb.h>
 #include "xhci-tegra.h"
 #include "xhci.h"
 
@@ -58,111 +62,26 @@
 #define   UTMIP_LINE_DEB_CNT(x)		(((x) & 0xf) << 16)
 #define   UTMIP_LINE_DEB_CNT_MASK		(0xf << 16)
 
-#define PMC_USB_AO_0				0xf0
-#define   USBOP_VAL_PD(x)			(1 << (((x) << 2) + 0))
-#define   USBON_VAL_PD(x)			(1 << (((x) << 2) + 1))
-
-#define PMC_UTMIP_UHSIC_TRIGGERS_0		0x1ec
-#define   UTMIP_CLR_WALK_PTR(x)		(1 << (0 + (x)))
-#define   UTMIP_CAP_CFG(x)			(1 << (4 + (x)))
-#define   UTMIP_CLR_WAKE_ALARM(x)		(1 << (12 + (x)))
-
-#define PMC_UTMIP_UHSIC_SAVED_STATE_0		0x1f0
-#define	UTMIP_WAKE_EX(x)		(1 << (((x) << 3) + 7))
-#define	UTMIP_SPEED(x, v)		(((v) & 0x3) << (((x) << 3) + 0))
-#define	UTMIP_SPEED_MASK(x)		((0x3) << (((x) << 3) + 0))
-#define	UTMIP_SPEED_HS			0
-#define	UTMIP_SPEED_FS			1
-#define	UTMIP_SPEED_LS			2
-#define	UTMIP_SPEED_RST			3
-
 #define PMC_UTMIP_UHSIC_SLEEP_CFG_0		0x1fc
-#define   UTMIP_UHSIC_MASTER_ENABLE(x)		(1 << (((x) << 3) + 0))
-#define   UTMIP_UHSIC_FSLS_USE_PMC(x)		(1 << (((x) << 3) + 1))
-#define   UTMIP_UHSIC_RCTRL_USE_PMC(x)		(1 << (((x) << 3) + 2))
-#define   UTMIP_UHSIC_TCTRL_USE_PMC(x)		(1 << (((x) << 3) + 3))
-
-#define   UTMIP_WAKE_VAL(x, v)			((v) << (((x) << 3) + 4))
-#define   UTMIP_WAKE_VAL_MASK(x)		(0xf << (((x) << 3) + 4))
-
-#define   WAKE_VAL_NONE			0xc
-#define   WAKE_VAL_ANY				0xf
-#define   WAKE_VAL_FSJ				0x2
-#define   WAKE_VAL_FSK				0x1
-#define   WAKE_VAL_SE0				0x0
-
-#define PMC_UTMIP_UHSIC_SLEEPWALK_CFG_0	0x200
-#define   UTMIP_GPIO_WALK_EN(x)		(1 << (((x) << 3) + 5))
-#define   UTMIP_WAKE_WALK_EN(x)		(1 << (((x) << 3) + 6))
-#define   UTMIP_LINEVAL_WALK_EN(x)		(1 << (((x) << 3) + 7))
-
-#define PMC_UTMIP_SLEEPWALK_Px_0(x)		(0x204 + ((x) << 2))
-#define   USBOP_RPD_A				(1 << 0)
-#define   USBON_RPD_A				(1 << 1)
-#define   USBOP_RPU_A				(1 << 2)
-#define   USBON_RPU_A				(1 << 3)
-#define   AP_A					(1 << 4)
-#define   AN_A					(1 << 5)
-#define   HIGHZ_A				(1 << 6)
-#define   RESERVED_A				(1 << 7)
-#define   USBOP_RPD_B				(1 << 8)
-#define   USBON_RPD_B				(1 << 9)
-#define   USBOP_RPU_B				(1 << 10)
-#define   USBON_RPU_B				(1 << 11)
-#define   AP_B					(1 << 12)
-#define   AN_B					(1 << 13)
-#define   HIGHZ_B				(1 << 14)
-#define   RESERVED_B				(1 << 15)
-#define   USBOP_RPD_C				(1 << 16)
-#define   USBON_RPD_C				(1 << 17)
-#define   USBOP_RPU_C				(1 << 18)
-#define   USBON_RPU_C				(1 << 19)
-#define   AP_C					(1 << 20)
-#define   AN_C					(1 << 21)
-#define   HIGHZ_C				(1 << 22)
-#define   RESERVED_C				(1 << 23)
-#define   USBOP_RPD_D				(1 << 24)
-#define   USBON_RPD_D				(1 << 25)
-#define   USBOP_RPU_D				(1 << 26)
-#define   USBON_RPU_D				(1 << 27)
-#define   AP_D					(1 << 28)
-#define   AN_D					(1 << 29)
-#define   HIGHZ_D				(1 << 30)
-#define   RESERVED_D				(1 << 31)
-
-#define PMC_UTMIP_UHSIC_FAKE_0			0x218
-#define   UTMIP_FAKE_USBOP_VAL(x)		(1 << (((x) << 2) + 0))
-#define   UTMIP_FAKE_USBON_VAL(x)		(1 << (((x) << 2) + 1))
-#define   UTMIP_FAKE_USBOP_EN(x)		(1 << (((x) << 2) + 2))
-#define   UTMIP_FAKE_USBON_EN(x)		(1 << (((x) << 2) + 3))
-
-#define PMC_UTMIP_UHSIC_LINE_WAKEUP_0		0x26c
-#define   UTMIP_LINE_WAKEUP_EN(x)		(1 << (x))
-
-#define PMC_UTMIP_MASTER_CONFIG_0		0x274
-#define   UTMIP_PWR(x)				(1 << (x))
-
-#define PMC_UTMIP_UHSIC2_SLEEP_CFG_0		0x284
-
-#define PMC_UTMIP_UHSIC2_LINE_WAKEUP_0		0x298
-#define   UHSIC_LINE_WAKEUP_EN_P1		(1 << 0)
 
 /* private data types */
 /* command requests from the firmware */
 enum MBOX_CMD_TYPE {
-	MBOX_CMD_INC_FALC_CLOCK = 1,
+	MBOX_CMD_MSG_ENABLED = 1,
+	MBOX_CMD_INC_FALC_CLOCK,
 	MBOX_CMD_DEC_FALC_CLOCK,
 	MBOX_CMD_INC_SSPI_CLOCK,
-	MBOX_CMD_DEC_SSPI_CLOCK,
+	MBOX_CMD_DEC_SSPI_CLOCK, /* 5 */
 	MBOX_CMD_SET_BW,
 	MBOX_CMD_SET_SS_PWR_GATING,
-	MBOX_CMD_SET_SS_PWR_UNGATING,
+	MBOX_CMD_SET_SS_PWR_UNGATING, /* 8 */
+	MBOX_CMD_SAVE_DFE_CTLE_CTX,
 
 	/* needs to be the last cmd */
 	MBOX_CMD_MAX,
 
 	/* resp msg to ack above commands */
-	MBOX_CMD_ACK,
+	MBOX_CMD_ACK = 128,
 	MBOX_CMD_NACK
 };
 
@@ -198,6 +117,10 @@ struct cfgtbl {
 	u32 l2_imem_end;
 	u32 version_id;
 	u8 init_ddirect;
+	u8 reserved[3];
+	u32 phys_addr_log_buffer;
+	u32 total_log_entries;
+	u32 dequeue_ptr;
 
 	/*	Below two dummy variables are used to replace
 	 *	L2IMemSymTabOffsetInDFI and L2IMemSymTabSize in order to
@@ -208,6 +131,9 @@ struct cfgtbl {
 
 	/* fwimg_len */
 	u32 fwimg_len;
+	u8 magic[8];
+	u32 SS_low_power_entry_timeout;
+	u8 padding[140]; /* padding bytes to makeup 256-bytes cfgtbl */
 };
 
 struct xusb_save_regs {
@@ -232,6 +158,17 @@ struct xusb_save_regs {
 	u32 cfg_order;
 	u32 cfg_fladj;
 	u32 cfg_sid;
+	/* DFE and CTLE */
+	u32 tap1_val[2];
+	u32 amp_val[2];
+	u32 ctle_z_val[2];
+	u32 ctle_g_val[2];
+};
+
+struct tegra_xhci_firmware {
+	void *data; /* kernel virtual address */
+	size_t size; /* firmware size */
+	dma_addr_t dma; /* dma address for controller */
 };
 
 struct tegra_xhci_hcd {
@@ -251,6 +188,7 @@ struct tegra_xhci_hcd {
 	bool hs_wake_event;
 	bool host_resume_req;
 	bool lp0_exit;
+	bool dfe_ctle_ctx_saved;
 	unsigned long last_jiffies;
 	unsigned long host_phy_base;
 
@@ -259,7 +197,8 @@ struct tegra_xhci_hcd {
 	void __iomem *fpci_base;
 	void __iomem *ipfs_base;
 
-	struct tegra_xusb_pad_data *xusb_padctl;
+	struct tegra_xusb_platform_data *pdata;
+	struct tegra_xusb_board_data *bdata;
 
 	/* mailbox variables */
 	struct mutex mbox_lock;
@@ -269,7 +208,6 @@ struct tegra_xhci_hcd {
 
 	struct regulator *xusb_vbus_reg;
 	struct regulator *xusb_avddio_usb3_reg;
-	struct regulator *xusb_vddio_hsic_reg;
 	struct regulator *xusb_hvdd_usb3_reg;
 	struct regulator *xusb_avdd_usb3_pll_reg;
 
@@ -277,51 +215,22 @@ struct tegra_xhci_hcd {
 	struct work_struct ss_elpg_exit_work;
 	struct work_struct host_elpg_exit_work;
 
-	struct clk *host_partition_clk;
-	struct clk *ss_partition_clk;
-	struct clk *dev_partition_clk;
-
-	/* XUSB Core Host Clock */
 	struct clk *host_clk;
+	struct clk *ss_clk;
 
 	/* XUSB Falcon SuperSpeed Clock */
 	struct clk *falc_clk;
 
 	/* EMC Clock */
 	struct clk *emc_clk;
-
 	/* XUSB SS PI Clock */
-	struct clk *ss_clk;
-
-	/* XUSB HS PI Clock */
-	struct clk *hs_clk;
-
-	/* PLLU Clock */
-	struct clk *pllu_clk;
-
+	struct clk *ss_src_clk;
 	/* PLLE Clock */
 	struct clk *plle_clk;
-
-	/* UTMIP Clock */
-	struct clk *utmip_clk;
-
-	/* FS Clock */
-	struct clk *fs_clk;
-
-	/* Dev Clock */
-	struct clk *dev_clk;
-
 	struct clk *pll_u_480M;
 	struct clk *clk_m;
-
-	struct clk *plle_re_vco_clk;
-
-	struct clk *pll_u_60M;
-
-	struct clk *pll_p_clk;
-
-	struct clk *pll_u_48M;
-
+	/* refPLLE clk */
+	struct clk *pll_re_vco_clk;
 	/*
 	 * XUSB/IPFS specific registers these need to be saved/restored in
 	 * addition to spec defined registers
@@ -331,11 +240,12 @@ struct tegra_xhci_hcd {
 	bool usb3_rh_suspend;
 	bool hc_in_elpg;
 
+	unsigned long usb3_rh_remote_wakeup_ports; /* one bit per port */
 	/* firmware loading related */
-	u32 fw_phys_base;
-	u32 fw_virt_base;
-	u32 fw_size;
+	struct tegra_xhci_firmware firmware;
 };
+
+static struct tegra_usb_pmc_data pmc_data;
 
 /* functions */
 static inline struct tegra_xhci_hcd *hcd_to_tegra_xhci(struct usb_hcd *hcd)
@@ -352,6 +262,24 @@ static inline void must_have_sync_lock(struct tegra_xhci_hcd *tegra)
 static inline void must_have_sync_lock(struct tegra_xhci_hcd *tegra)
 #endif
 
+static bool is_any_hs_connected(struct xhci_hcd *xhci)
+{
+	__le32 __iomem *addr;
+	int i;
+	int ports;
+	u32 portsc;
+
+	ports = HCS_MAX_PORTS(xhci->hcs_params1);
+	addr = &xhci->op_regs->port_status_base;
+	for (i = 0; i < ports; i++) {
+		portsc = xhci_readl(xhci, addr);
+		if ((portsc & PORT_CONNECT) && DEV_HIGHSPEED(portsc))
+			return true;
+		addr += NUM_PORT_REGS;
+	}
+	return false;
+}
+
 static void debug_print_portsc(struct xhci_hcd *xhci)
 {
 	__le32 __iomem *addr;
@@ -367,412 +295,49 @@ static void debug_print_portsc(struct xhci_hcd *xhci)
 	}
 }
 
-static int tegra_xhci_pmc_usb2_wakenotif_init(struct tegra_xhci_hcd *tegra,
-	int port, u32 *portsc)
+static void update_speed(struct tegra_xhci_hcd *tegra, u8 port)
 {
-	void __iomem *pmc_base = tegra->pmc_base;
-	struct platform_device *pdev = tegra->pdev;
-	struct xhci_hcd	*xhci = tegra->xhci;
-	struct usb_hcd *hcd = xhci_to_hcd(xhci);
-	u32 val;
+	struct usb_hcd *hcd = xhci_to_hcd(tegra->xhci);
+	u32 portsc;
 
-	/*
-	 * MASTER_ENABLE_Px = 0.
-	 * Also program UTMIP_PWR_P2 = 1 for power savings mode.
-	 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-	if (val & UTMIP_UHSIC_MASTER_ENABLE(port)) {
-		dev_err(&pdev->dev, "error: UTMIP_MASTER_ENABLE_P2 != 0\n");
-		return -1;
-	}
-
-	/* PMC_UTMIP_MASTER_CONFIG_0 */
-	val = readl(pmc_base + PMC_UTMIP_MASTER_CONFIG_0);
-	val |= UTMIP_PWR(port);
-	writel(val, pmc_base + PMC_UTMIP_MASTER_CONFIG_0);
-
-	/*
-	 * B. Program debouncer to some value
-	 * (at least test 0 and non-zero value)
-	 * UTMIP_LINE_DEB_CNT=0
-	 */
-	val = readl(pmc_base + PMC_USB_DEBOUNCE_DEL_0);
-	val &= ~UTMIP_LINE_DEB_CNT_MASK;
-	val |= UTMIP_LINE_DEB_CNT(1);
-	writel(val, pmc_base + PMC_USB_DEBOUNCE_DEL_0);
-
-	/*
-	 * C. Make sure nothing is happening on the line with respect to PMC
-	 * UTMIP_FAKE_USBON_EN_Px=0
-	 * UTMIP_FAKE_USBOP_EN_Px=0
-	 * UTMIP_FAKE_USBON_VAL_Px=0
-	 * UTMIP_FAKE_USBOP_VAL_Px=0
-	 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_FAKE_0);
-	val &= ~(UTMIP_FAKE_USBOP_VAL(port) | UTMIP_FAKE_USBON_VAL(port) |
-		 UTMIP_FAKE_USBOP_EN(port) | UTMIP_FAKE_USBON_EN(port));
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_FAKE_0);
-
-	/*
-	 * D. Make sure wake value for line is none, program the following in
-	 * sequence:
-	 * 1. UTMIP_LINE_WAKEUP_EN_Px=0
-	 * 2. UTMIP_WAKE_VAL_Px=NONE
-	 * 3. UTMIP_LINE_WAKEUP_EN_Px=1
-	 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_LINE_WAKEUP_0);
-	val &= ~UTMIP_LINE_WAKEUP_EN(port);
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_LINE_WAKEUP_0);
-
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-	val &= ~UTMIP_WAKE_VAL_MASK(port);
-	val |= UTMIP_WAKE_VAL(port, WAKE_VAL_NONE);
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_LINE_WAKEUP_0);
-	val |= UTMIP_LINE_WAKEUP_EN(port);
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_LINE_WAKEUP_0);
-
-	/*
-	 * E. Make sure pad detectors are off:
-	 * USBOP_VAL_PD_Px=1
-	 * USBON_VAL_PD_Px=1
-	 */
-	val = readl(pmc_base + PMC_USB_AO_0);
-	val |= (USBOP_VAL_PD(port) | USBON_VAL_PD(port));
-	writel(val, pmc_base + PMC_USB_AO_0);
-
-	/* FIXME: mapping between UTMIP to PORTSC should be corrected */
-	*portsc = readl(hcd->regs +
-		BAR0_XHCI_OP_PORTSC(port + BAR0_XHCI_OP_PORTSC_UTMIP_0));
-
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-	val &= ~UTMIP_SPEED_MASK(port);
-	if (DEV_FULLSPEED(*portsc))
-		val |= UTMIP_SPEED(port, UTMIP_SPEED_FS);
-	else if (DEV_LOWSPEED(*portsc))
-		val |= UTMIP_SPEED(port, UTMIP_SPEED_LS);
-	else if (DEV_HIGHSPEED(*portsc))
-		val |= UTMIP_SPEED(port, UTMIP_SPEED_HS);
-
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-
-	/*
-	 * G. Remove fake values and make synchronizers work a bit.
-	 * (TODO: Duplicate with #C?)
-	 * UTMIP_FAKE_USBOP_EN_P2=0
-	 * UTMIP_FAKE_USBON_EN_P2=0
-	 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_FAKE_0);
-	val &= ~UTMIP_FAKE_USBOP_EN(port);
-	val &= ~UTMIP_FAKE_USBON_EN(port);
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_FAKE_0);
-
-	/*
-	 * H. Enable which type of event can trigger a walk to respond from a
-	 * wakeup. GPIO N is connected to the baseband and USB Remote Wakeup
-	 * are possible:
-	 */
-
-	/* UTMIP_GPIO_WALK_EN_P2=1 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEPWALK_CFG_0);
-	val &= ~UTMIP_GPIO_WALK_EN(port);
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEPWALK_CFG_0);
-
-	/* UTMIP_WAKE_WALK_EN_P2=0 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEPWALK_CFG_0);
-	val &= ~UTMIP_WAKE_WALK_EN(port);
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEPWALK_CFG_0);
-
-	/* UTMIP_LINEVAL_WALK_EN_P2=1 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEPWALK_CFG_0);
-	val |= UTMIP_LINEVAL_WALK_EN(port);
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEPWALK_CFG_0);
-
-	/*
-	 * I. Clear the Walk Pointers and Capture the FS/LS pad configuration.
-	 *    TODO: Read captured config and at least verify LO_SPD is correct.
-	 * UTMIP_CLR_WALK_PTR_P2=1
-	 * UTMIP_CAP_CFG_P2=1
-	 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_TRIGGERS_0);
-	val |= (UTMIP_CLR_WALK_PTR(port) | UTMIP_CAP_CFG(port)
-		| UTMIP_CLR_WAKE_ALARM(port));
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_TRIGGERS_0);
-
-	/*
-	 * J. Read the UB_RCTRL and UB_TCTRL field from UTMIP regs
-	 * (see arutmip.spec) and program RCTRL_VAL and TCTRL_VAL.
-	 * Ensure you program a thermally encoded value by using the most
-	 * significant bit turned on in UB_RCTRL and UB_TCTRL to create
-	 * RCTRL_VAL and TCTRL_VAL respectively.
-	 * TODO: RCTRL_VAL=Thermal Encoding
-	 * TODO: TCTRL_VAL=Thermal Encoding
-	 * K. Program walk sequence
-	 * For UTMIP, it is host pull downs to help the device maintain a J on
-	 * the line. Followed by a driven FS K or LS K to signal a resume once
-	 * an walk event is detected
-	 * For UHSIC, it is host pull downs to maintain an idle on the line.
-	 * Followed by a driven resume once an walk event is detected
-
-	 * UTMIP_SLEEPWALK_P0:
-	 * UTMIP_SLEEPWALK_P2:
-	 */
-	if (!(*portsc & PORT_CONNECT)) {
-		/* Unconnected */
-		val = USBOP_RPD_A | USBON_RPD_A | HIGHZ_A |
-			USBOP_RPD_B | USBON_RPD_B | HIGHZ_B |
-			USBOP_RPD_C | USBON_RPD_C | HIGHZ_C |
-			USBOP_RPD_D | USBON_RPD_D | HIGHZ_D;
-	} else if (DEV_LOWSPEED(*portsc)) {
-		/* LowSpeed */
-		val = USBOP_RPD_A | USBON_RPD_A | AP_A | HIGHZ_A |
-			USBOP_RPD_B | USBON_RPD_B | AP_B |
-			USBOP_RPD_C | USBON_RPD_C | AP_C |
-			USBOP_RPD_D | USBON_RPD_D | AP_D;
-	} else {
-		/* FullSpeed or HighSpeed */
-		val = USBOP_RPD_A | USBON_RPD_A | AN_A | HIGHZ_A |
-			USBOP_RPD_B | USBON_RPD_B | AN_B |
-			USBOP_RPD_C | USBON_RPD_C | AN_C |
-			USBOP_RPD_D | USBON_RPD_D | AN_D;
-	}
-	writel(val, pmc_base + PMC_UTMIP_SLEEPWALK_Px_0(port));
-
-	/*
-	 * L. Place USB2 ports in suspend. There is now at least 5ms before a
-	 * remote device could issue a wakeup and the time MASTER_ENABLE can
-	 * be set to 1.
-	 */
-
-	return 0;
+	portsc = readl(hcd->regs + BAR0_XHCI_OP_PORTSC(port +
+						BAR0_XHCI_OP_PORTSC_UTMIP_0));
+	if (DEV_FULLSPEED(portsc))
+		pmc_data.port_speed = USB_PMC_PORT_SPEED_FULL;
+	else if (DEV_HIGHSPEED(portsc))
+		pmc_data.port_speed = USB_PMC_PORT_SPEED_HIGH;
+	else if (DEV_LOWSPEED(portsc))
+		pmc_data.port_speed = USB_PMC_PORT_SPEED_LOW;
+	else if (DEV_SUPERSPEED(portsc))
+		pmc_data.port_speed = USB_PMC_PORT_SPEED_SUPER;
+	else
+		pmc_data.port_speed = USB_PMC_PORT_SPEED_UNKNOWN;
 }
 
-static void tegra_xhci_pmc_usb2_wakenotif_on(struct tegra_xhci_hcd *tegra,
-	int port, u32 portsc)
+static void pmc_init(struct tegra_xhci_hcd *tegra)
 {
-	void __iomem *pmc_base = tegra->pmc_base;
-	struct xhci_hcd *xhci = tegra->xhci;
-	u32 val;
+	u32 portmap = tegra->bdata->portmap;
 
-	/*
-	 * M. Power up the value detectors:
-	 * USBOP_VAL_PD_P2=0
-	 * USBON_VAL_PD_P2=0
-	 */
-	val = readl(pmc_base + PMC_USB_AO_0);
-	val &= ~(USBOP_VAL_PD(port) | USBON_VAL_PD(port));
-	writel(val, pmc_base + PMC_USB_AO_0);
-
-	/* Add small delay before usb detectors provide stable line values */
-	usleep_range(100, 200);
-
-	/*
-	 * N. Turn over pad configuration to PMC and set the UTMIP_WAKE_VAL_P0
-	 * to reflect a high speed resume signaling by a device:
-	 * UTMIP_RCTRL_USE_PMC_P0=1
-	 * UTMIP_TCTRL_USE_PMC_P0=1
-	 * UTMIP_FSLS_USE_PMC_P0=1
-	 */
-
-	if (!(portsc & PORT_CONNECT)) {
-		/*
-		 * Unconnected with wake on connect enabled
-		 * UTMIP_WAKE_EX_P2=ON
-		 * UTMIP_WAKE_VAL_P2=SE0
-		 * UTMIP_MASTER_ENABLE_P2=1
-		 */
-
-		if (portsc & PORT_WKCONN_E) {
-			xhci_info(xhci,
-				"Unconnected with wake on connect enabled\n");
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-			val |= UTMIP_WAKE_EX(port);
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-			val &= ~UTMIP_WAKE_VAL_MASK(port);
-			val |= UTMIP_WAKE_VAL(port, WAKE_VAL_SE0);
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-			val |= (UTMIP_UHSIC_MASTER_ENABLE(port)
-				| UTMIP_UHSIC_FSLS_USE_PMC(port)
-				| UTMIP_UHSIC_RCTRL_USE_PMC(port)
-				| UTMIP_UHSIC_TCTRL_USE_PMC(port));
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-		}
-	} else if (DEV_LOWSPEED(portsc)) {
-		if (portsc & PORT_WKDISC_E) {
-			/*
-			 * LowSpeed with wake on disconnected enabled
-			 * UTMIP_WAKE_EX_P2=ON
-			 * UTMIP_WAKE_VAL_P2=FSK
-			 * UTMIP_MASTER_ENABLE_P2=1
-			 */
-
-			xhci_info(xhci,
-				"LS with wake on disconnected enabled\n");
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-			val |= UTMIP_WAKE_EX(port);
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-			val &= ~UTMIP_WAKE_VAL_MASK(port);
-			val |= UTMIP_WAKE_VAL(port, WAKE_VAL_FSK);
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-			val |= (UTMIP_UHSIC_MASTER_ENABLE(port)
-				| UTMIP_UHSIC_FSLS_USE_PMC(port)
-				| UTMIP_UHSIC_RCTRL_USE_PMC(port)
-				| UTMIP_UHSIC_TCTRL_USE_PMC(port));
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-		} else {
-			/*
-			 * LowSpeed with wake on disconnected disabled
-			 * UTMIP_WAKE_VAL_P2=FSJ
-			 * UTMIP_MASTER_ENABLE_P2=1
-			 */
-
-			xhci_info(xhci,
-				"LS with wake on disconnected disabled\n");
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-			val &= ~UTMIP_WAKE_VAL_MASK(port);
-			val |= UTMIP_WAKE_VAL(port, WAKE_VAL_FSJ);
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-			val |= (UTMIP_UHSIC_MASTER_ENABLE(port)
-				| UTMIP_UHSIC_FSLS_USE_PMC(port)
-				| UTMIP_UHSIC_RCTRL_USE_PMC(port)
-				| UTMIP_UHSIC_TCTRL_USE_PMC(port));
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-		}
-	} else {
-		if (portsc & PORT_WKDISC_E) {
-			/*
-			 * Full or High Speed with wake on disconnected enabled
-			 * UTMIP_WAKE_EX_P2=ON
-			 * UTMIP_WAKE_VAL_P2=FSJ
-			 * UTMIP_MASTER_ENABLE_P2=1
-			 */
-			xhci_info(xhci,
-				"FS/HS with wake on disconnected enabled\n");
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-			val |= UTMIP_WAKE_EX(port);
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-			val &= ~UTMIP_WAKE_VAL_MASK(port);
-			val |= UTMIP_WAKE_VAL(port, WAKE_VAL_FSJ);
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-			val |= (UTMIP_UHSIC_MASTER_ENABLE(port)
-				| UTMIP_UHSIC_FSLS_USE_PMC(port)
-				| UTMIP_UHSIC_RCTRL_USE_PMC(port)
-				| UTMIP_UHSIC_TCTRL_USE_PMC(port));
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-
-		} else {
-			/*
-			 * Full or High Speed with wake on disconnect disabled
-			 * UTMIP_WAKE_VAL_P0=FSK
-			 * UTMIP_MASTER_ENABLE_P0=1
-			 */
-			xhci_info(xhci,
-				"FS/HS with wake on disconnected disabled\n");
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-			val |= UTMIP_WAKE_EX(port);
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-			val &= ~UTMIP_WAKE_VAL_MASK(port);
-			val |= UTMIP_WAKE_VAL(port, WAKE_VAL_FSK);
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-
-			val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-			val |= (UTMIP_UHSIC_MASTER_ENABLE(port)
-				| UTMIP_UHSIC_FSLS_USE_PMC(port)
-				| UTMIP_UHSIC_RCTRL_USE_PMC(port)
-				| UTMIP_UHSIC_TCTRL_USE_PMC(port));
-			writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-		}
+	pmc_data.controller_type = TEGRA_USB_3_0;
+	if (portmap & TEGRA_XUSB_USB2_P0) {
+		pmc_data.instance = PMC_PORT_UTMIP_P0;
+		pmc_data.phy_type = TEGRA_USB_PHY_INTF_UTMI;
+		update_speed(tegra, PMC_PORT_UTMIP_P0);
+		tegra_usb_pmc_init(&pmc_data);
 	}
-
-	/* UTMIP_LINE_WAKEUP_EN_P2=1 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_LINE_WAKEUP_0);
-	val |= UTMIP_LINE_WAKEUP_EN(port);
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_LINE_WAKEUP_0);
-
-	/*
-	 * O. Place XUSB in ELPG or keep it on.
-	 * P. Wait for a wake or walk event
-	 */
-}
-
-static void tegra_xhci_pmc_usb2_wakenotif_off(struct tegra_xhci_hcd *tegra,
-	int port)
-{
-	void __iomem *pmc_base = tegra->pmc_base;
-	u32 val;
-
-	/*
-	 * P. Exit from ELPG if necessary, reset XUSB controller and keep USB2.0
-	 * ports in suspend. Note that this must be done all while an RESUME is
-	 * driven on the line.
-	 * Q. Let the XUSB PI take over the port from PMC when it is known the
-	 * PI is drivng the RESUME signaling at the PHY and ready to release
-	 * suspend:
-	 */
-
-	/* UTMIP_WAKE_EX_P2 = OFF */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-	val &= ~UTMIP_WAKE_EX(port);
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_SAVED_STATE_0);
-
-	/*
-	 * UTMIP_MASTER_ENABLE_P2 = 0
-	 * UTMIP_FSLS_USE_PMC_P2 = 0
-	 * UTMIP_RCTRL_USE_PMC_P2 = 0
-	 * UTMIP_TCTRL_USE_PMC_P2 = 0
-	 * UTMIP_WAKE_VAL_P2 = NONE
-	 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-	val &= ~(UTMIP_UHSIC_MASTER_ENABLE(port) |
-		UTMIP_UHSIC_FSLS_USE_PMC(port) |
-		UTMIP_UHSIC_RCTRL_USE_PMC(port) |
-		UTMIP_UHSIC_TCTRL_USE_PMC(port));
-	val &= ~UTMIP_WAKE_VAL_MASK(port);
-	val |= UTMIP_WAKE_VAL(port, WAKE_VAL_NONE);
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
-
-	/*
-	 * USBOP_VAL_PD_P2 = 1
-	 * USBON_VAL_PD_P2 = 1
-	 */
-	val = readl(pmc_base + PMC_USB_AO_0);
-	val |= (USBOP_VAL_PD(port) | USBON_VAL_PD(port));
-	writel(val, pmc_base + PMC_USB_AO_0);
-
-	/*
-	 * UTMIP_FAKE_USBOP_EN_P2 = 1
-	 * UTMIP_FAKE_USBON_EN_P2 = 1
-	 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_FAKE_0);
-	val |= (UTMIP_FAKE_USBOP_EN(port) | UTMIP_FAKE_USBON_EN(port));
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_FAKE_0);
-
-	/* UTMIP_CLR_WAKE_ALARM_P2=1 */
-	val = readl(pmc_base + PMC_UTMIP_UHSIC_TRIGGERS_0);
-	val |= UTMIP_CLR_WAKE_ALARM(port);
-	writel(val, pmc_base + PMC_UTMIP_UHSIC_TRIGGERS_0);
+	if (portmap & TEGRA_XUSB_USB2_P1) {
+		/* XUSB_USB2_P1 is PMC UTMI_P2 */
+		pmc_data.instance = PMC_PORT_UTMIP_P2;
+		pmc_data.phy_type = TEGRA_USB_PHY_INTF_UTMI;
+		update_speed(tegra, PMC_PORT_UTMIP_P2);
+		tegra_usb_pmc_init(&pmc_data);
+	}
+	if (portmap & TEGRA_XUSB_HSIC_P0) {
+		pmc_data.instance = PMC_PORT_UHSIC_P0;
+		pmc_data.phy_type = TEGRA_USB_PHY_INTF_HSIC;
+		update_speed(tegra, PMC_PORT_UHSIC_P0);
+		tegra_usb_pmc_init(&pmc_data);
+	}
 }
 
 u32 csb_read(struct tegra_xhci_hcd *tegra, u32 addr)
@@ -821,138 +386,6 @@ void csb_write(struct tegra_xhci_hcd *tegra, u32 addr, u32 data)
 
 	dev_dbg(&pdev->dev, "csb_write: input_addr = 0x%08x data = %0x08x\n",
 			input_addr, data);
-}
-
-static int tegra_xhci_load_firmware(struct tegra_xhci_hcd *tegra, bool reset)
-{
-	struct platform_device *pdev = tegra->pdev;
-	u32 fw_virt_base = tegra->fw_virt_base;
-	u32 fw_phys_base = tegra->fw_phys_base;
-	u32 fw_size = tegra->fw_size;
-	u64 phys_addr_lo, phys_addr_hi = 0;
-	u32 HwReg, boot_start, imem_block_start;
-	u32 boot_code_tag, boot_code_pc, imem_block_size;
-	struct cfgtbl *cfg_tbl;
-	u16 nblocks, rbytes;
-	time_t fw_time;
-	struct tm fw_tm;
-	int ret = 0;
-
-	/* First thing, reset the ARU. By the time we get to
-	 * loading boot code below, reset would be complete.
-	 * alternatively we can busy wait on rst pending bit.
-	 */
-	/* Don't reset during ELPG/LP0 exit path */
-	if (reset) {
-		iowrite32(0x1, tegra->fpci_base + XUSB_CFG_ARU_RST);
-		usleep_range(1000, 2000);
-	}
-
-	if (csb_read(tegra, XUSB_CSB_MP_ILOAD_BASE_LO) != 0) {
-
-		dev_dbg(&pdev->dev, "fw already loaded by BIOS\n");
-		dev_dbg(&pdev->dev, "falcon state = %x\n",
-				csb_read(tegra, XUSB_FALC_CPUCTL));
-		return 0;
-	}
-	imem_block_size = IMEM_BLOCK_SIZE;
-	/* TODO: use readl/writel to access mapped memory region */
-	cfg_tbl = (struct cfgtbl *)fw_virt_base;
-
-	fw_time = cfg_tbl->fwimg_created_time;
-	time_to_tm(fw_time, 0, &fw_tm);
-	dev_dbg(&pdev->dev, "%s: fwimg_created_time %ld-%02d-%02d "\
-		"%02d:%02d:%02d UTC\n", __func__, fw_tm.tm_year + 1900,
-		fw_tm.tm_mon + 1, fw_tm.tm_mday, fw_tm.tm_hour, fw_tm.tm_min,
-		fw_tm.tm_sec);
-
-	/* Offset from start of code region in DFI
-	 * (does not include 256 byte cfgtbl)
-	 */
-
-	boot_start = (u32)((u8 *)cfg_tbl->boot_codedfi_offset  + 256);
-	imem_block_start = cfg_tbl->boot_loadaddr_in_imem/IMEM_BLOCK_SIZE;
-	boot_code_pc = cfg_tbl->boot_codetag;
-
-	/* below to be programmed to BOOTVEC as start of boot code */
-	boot_code_tag = cfg_tbl->boot_codetag/256;
-
-	nblocks = cfg_tbl->boot_codesize/imem_block_size;
-	rbytes = cfg_tbl->boot_codesize % imem_block_size;
-
-	phys_addr_lo = (u32) ((char *)fw_phys_base + 256);
-
-	/* Program the size of DFI into ILOAD_ATTR */
-	csb_write(tegra, XUSB_CSB_MP_ILOAD_ATTR, fw_size);
-
-	/* Boot code of the firmware reads the ILOAD_BASE_LO register
-	 * to get to the start of the dfi in system memory.
-	 */
-	csb_write(tegra, XUSB_CSB_MP_ILOAD_BASE_LO, phys_addr_lo);
-
-	/* Program the ILOAD_BASE_HI with a value of MSB 32 bits */
-	csb_write(tegra, XUSB_CSB_MP_ILOAD_BASE_HI, phys_addr_hi);
-
-	/* Set BOOTPATH to 1 in APMAP Register.Bit 31 is APMAP_BOOTMAP */
-	HwReg = APMAP_BOOTPATH;
-	csb_write(tegra, XUSB_CSB_MP_APMAP, HwReg);
-
-	/* Invalidate l2imem. */
-	HwReg = L2IMEM_INVALIDATE_ALL;
-	csb_write(tegra, XUSB_CSB_MP_L2IMEMOP_TRIG, HwReg);
-
-	/* Initiate Fetch of Bootcode from system memory into l2imem.
-	 * a. Program BootCode location and size in system memory.
-	 */
-
-	HwReg = (((cfg_tbl->boot_codetag/imem_block_size)
-			<< L2IMEMOP_SIZE_SRC_OFFSET_SHIFT)
-			| ((cfg_tbl->boot_codesize/imem_block_size)
-			<< L2IMEMOP_SIZE_SRC_COUNT_SHIFT)
-			);
-
-	csb_write(tegra, XUSB_CSB_MP_L2IMEMOP_SIZE, HwReg);
-
-	/* b. Trigger Load operation. */
-	HwReg = L2IMEM_LOAD_LOCKED_RESULT << L2IMEMOP_TRIG_LOAD_LOCKED_SHIFT;
-	csb_write(tegra, XUSB_CSB_MP_L2IMEMOP_TRIG, HwReg);
-
-	/* Program the size of autofill section */
-	HwReg = cfg_tbl->boot_codesize/imem_block_size;
-	csb_write(tegra, XUSB_FALC_IMFILLCTL, HwReg);
-
-
-	/* Program TagLo/TagHi of autofill section. */
-	HwReg = ((cfg_tbl->boot_codetag/imem_block_size)|
-				(((cfg_tbl->boot_codetag+cfg_tbl->boot_codesize)
-				/imem_block_size-1)<<IMFILLRNG1_TAG_HI_SHIFT));
-
-	csb_write(tegra, XUSB_FALC_IMFILLRNG1, HwReg);
-
-	/* Write 0x0 to DMACTL register. */
-	csb_write(tegra, XUSB_FALC_DMACTL, 0x0);
-
-	/* write to BOOTVEC register */
-	csb_write(tegra, XUSB_FALC_BOOTVEC, boot_code_pc);
-
-	/* Start Falcon CPU */
-	csb_write(tegra, XUSB_FALC_CPUCTL, CPUCTL_STARTCPU);
-	usleep_range(1000, 2000);
-
-	dev_info(&pdev->dev,
-		"load fw created at %ld-%02d-%02d %02d:%02d:%02d "\
-		"UTC falcon state = %x\n", fw_tm.tm_year + 1900,
-		fw_tm.tm_mon + 1, fw_tm.tm_mday, fw_tm.tm_hour,
-		fw_tm.tm_min, fw_tm.tm_sec,
-		csb_read(tegra, XUSB_FALC_CPUCTL));
-
-	/* return fail if firmware status is not good */
-	if (csb_read(tegra, XUSB_FALC_CPUCTL) == XUSB_FALC_STATE_HALTED)
-		ret = -EFAULT;
-	else
-		ret = 0;
-
-	return ret;
 }
 
 static void tegra_xhci_debug_read_pads(struct tegra_xhci_hcd *tegra)
@@ -1028,62 +461,32 @@ static int tegra_xusb_regulator_init(struct tegra_xhci_hcd *tegra,
 {
 	int err = 0;
 
-	tegra->xusb_vbus_reg = devm_regulator_get(&pdev->dev, "usb_vbus");
-	if (IS_ERR(tegra->xusb_vbus_reg)) {
-		dev_err(&pdev->dev, "vbus regulator not found: %ld."
-			, PTR_ERR(tegra->xusb_vbus_reg));
-		err = PTR_ERR(tegra->xusb_vbus_reg);
-		goto err_null_regulator;
-	}
-	err = regulator_enable(tegra->xusb_vbus_reg);
-	if (err < 0) {
-		dev_err(&pdev->dev, "vbus: regulator enable failed:%d\n", err);
-		goto err_null_regulator;
-	}
-
-	tegra->xusb_avddio_usb3_reg =
-			devm_regulator_get(&pdev->dev, "avddio_usb");
-	if (IS_ERR(tegra->xusb_avddio_usb3_reg)) {
-		dev_err(&pdev->dev, "avddio_usb3: regulator not found: %ld."
-			, PTR_ERR(tegra->xusb_avddio_usb3_reg));
-		err = PTR_ERR(tegra->xusb_avddio_usb3_reg);
-		goto err_put_vbus;
-	}
-	err = regulator_enable(tegra->xusb_avddio_usb3_reg);
-	if (err < 0) {
-		dev_err(&pdev->dev,
-			"avddio_usb3: regulator enable failed:%d\n", err);
-		goto err_put_vbus;
-	}
-
-	tegra->xusb_vddio_hsic_reg =
-			devm_regulator_get(&pdev->dev, "vddio_hsic");
-	if (IS_ERR(tegra->xusb_vddio_hsic_reg)) {
-		dev_err(&pdev->dev, "vddio_hsic: regulator not found: %ld."
-			, PTR_ERR(tegra->xusb_vddio_hsic_reg));
-		err = PTR_ERR(tegra->xusb_vddio_hsic_reg);
-		goto err_put_avddio_usb3;
-	}
-	err = regulator_enable(tegra->xusb_vddio_hsic_reg);
-	if (err < 0) {
-		dev_err(&pdev->dev,
-			"vddio_hsic: regulator enable failed:%d\n", err);
-		goto err_put_avddio_usb3;
-	}
-
 	tegra->xusb_hvdd_usb3_reg =
 			devm_regulator_get(&pdev->dev, "hvdd_usb");
-	if (IS_ERR(tegra->xusb_vddio_hsic_reg)) {
+	if (IS_ERR(tegra->xusb_hvdd_usb3_reg)) {
 		dev_dbg(&pdev->dev, "hvdd_usb: regulator not found: %ld."
 			, PTR_ERR(tegra->xusb_hvdd_usb3_reg));
 		err = PTR_ERR(tegra->xusb_hvdd_usb3_reg);
-		goto err_put_vddio_hsic;
+		goto err_null_regulator;
 	}
 	err = regulator_enable(tegra->xusb_hvdd_usb3_reg);
 	if (err < 0) {
 		dev_err(&pdev->dev,
 			"hvdd_usb3: regulator enable failed:%d\n", err);
-		goto err_put_vddio_hsic;
+		goto err_null_regulator;
+	}
+
+	tegra->xusb_vbus_reg = devm_regulator_get(&pdev->dev, "usb_vbus");
+	if (IS_ERR(tegra->xusb_vbus_reg)) {
+		dev_err(&pdev->dev, "vbus regulator not found: %ld."
+			, PTR_ERR(tegra->xusb_vbus_reg));
+		err = PTR_ERR(tegra->xusb_vbus_reg);
+		goto err_put_hvdd_usb3;
+	}
+	err = regulator_enable(tegra->xusb_vbus_reg);
+	if (err < 0) {
+		dev_err(&pdev->dev, "vbus: regulator enable failed:%d\n", err);
+		goto err_put_hvdd_usb3;
 	}
 
 	tegra->xusb_avdd_usb3_pll_reg =
@@ -1092,29 +495,41 @@ static int tegra_xusb_regulator_init(struct tegra_xhci_hcd *tegra,
 		dev_dbg(&pdev->dev, "regulator not found: %ld."
 			, PTR_ERR(tegra->xusb_avdd_usb3_pll_reg));
 		err = PTR_ERR(tegra->xusb_avdd_usb3_pll_reg);
-		goto err_put_hvdd_usb3;
+		goto err_put_vbus;
 	}
 	err = regulator_enable(tegra->xusb_avdd_usb3_pll_reg);
 	if (err < 0) {
 		dev_err(&pdev->dev,
 			"avdd_usb3_pll: regulator enable failed:%d\n", err);
-		goto err_put_hvdd_usb3;
+		goto err_put_vbus;
+	}
+
+	tegra->xusb_avddio_usb3_reg =
+			devm_regulator_get(&pdev->dev, "avddio_usb");
+	if (IS_ERR(tegra->xusb_avddio_usb3_reg)) {
+		dev_err(&pdev->dev, "avddio_usb3: regulator not found: %ld."
+			, PTR_ERR(tegra->xusb_avddio_usb3_reg));
+		err = PTR_ERR(tegra->xusb_avddio_usb3_reg);
+		goto err_put_usb3_pll;
+	}
+	err = regulator_enable(tegra->xusb_avddio_usb3_reg);
+	if (err < 0) {
+		dev_err(&pdev->dev,
+			"avddio_usb3: regulator enable failed:%d\n", err);
+		goto err_put_usb3_pll;
 	}
 
 	return err;
 
-err_put_hvdd_usb3:
-	regulator_disable(tegra->xusb_hvdd_usb3_reg);
-err_put_vddio_hsic:
-	regulator_disable(tegra->xusb_vddio_hsic_reg);
-err_put_avddio_usb3:
-	regulator_disable(tegra->xusb_avddio_usb3_reg);
+err_put_usb3_pll:
+	regulator_disable(tegra->xusb_avdd_usb3_pll_reg);
 err_put_vbus:
 	regulator_disable(tegra->xusb_vbus_reg);
+err_put_hvdd_usb3:
+	regulator_disable(tegra->xusb_hvdd_usb3_reg);
 err_null_regulator:
 	tegra->xusb_vbus_reg = NULL;
 	tegra->xusb_avddio_usb3_reg = NULL;
-	tegra->xusb_vddio_hsic_reg = NULL;
 	tegra->xusb_hvdd_usb3_reg = NULL;
 	tegra->xusb_avdd_usb3_pll_reg = NULL;
 	return err;
@@ -1122,134 +537,46 @@ err_null_regulator:
 
 static void tegra_xusb_regulator_deinit(struct tegra_xhci_hcd *tegra)
 {
+	regulator_disable(tegra->xusb_avddio_usb3_reg);
 	regulator_disable(tegra->xusb_avdd_usb3_pll_reg);
-	regulator_disable(tegra->xusb_hvdd_usb3_reg);
-	regulator_disable(tegra->xusb_vddio_hsic_reg);
 	regulator_disable(tegra->xusb_vbus_reg);
+	regulator_disable(tegra->xusb_hvdd_usb3_reg);
 
-	tegra->xusb_vbus_reg = NULL;
-	tegra->xusb_vddio_hsic_reg = NULL;
-	tegra->xusb_hvdd_usb3_reg = NULL;
+	tegra->xusb_avddio_usb3_reg = NULL;
 	tegra->xusb_avdd_usb3_pll_reg = NULL;
+	tegra->xusb_vbus_reg = NULL;
+	tegra->xusb_hvdd_usb3_reg = NULL;
 }
 
-static void utmipll_iddq_workaround(struct tegra_xhci_hcd *tegra)
-{
-#define TEGRA_CLK_RESET_BASE		0x60006000
-#define UTMIPLL_HW_PWRDN_CFG0			0x52c
-#define UTMIPLL_HW_PWRDN_CFG0_IDDQ_OVERRIDE	(1<<1)
-#define UTMIPLL_HW_PWRDN_CFG0_IDDQ_SWCTL	(1<<0)
-
-	void __iomem *clk_base = IO_ADDRESS(TEGRA_CLK_RESET_BASE);
-	struct platform_device *pdev = tegra->pdev;
-	u32 reg;
-
-	/* Workaround: carry utmipll out of IDDQ mode
-	 *
-	 * REASON: At resume path, clock driver will put utmipll in IDDQ mode
-	 * per USB 2.0 driver's requirement. However, USB 3.0 controller need
-	 * utmipll out of IDDQ mode.
-	 *
-	 * TODO: This is shared bit between USB2 and USB3 so check with USB 2.0
-	 * team and do it in a common place */
-	reg = ioread32(clk_base + UTMIPLL_HW_PWRDN_CFG0);
-	if (reg & UTMIPLL_HW_PWRDN_CFG0_IDDQ_OVERRIDE) {
-		dev_info(&pdev->dev, "%s: (WAR) carrying UTMIPLL out of IDDQ\n",
-				__func__);
-		reg &= ~(UTMIPLL_HW_PWRDN_CFG0_IDDQ_OVERRIDE |
-				UTMIPLL_HW_PWRDN_CFG0_IDDQ_SWCTL);
-		iowrite32(reg, clk_base + UTMIPLL_HW_PWRDN_CFG0);
-	}
-}
-
+/*
+ * We need to enable only plle_clk as pllu_clk, utmip_clk and plle_re_vco_clk
+ * are under hardware control
+ */
 static int tegra_usb2_clocks_init(struct tegra_xhci_hcd *tegra)
 {
 	struct platform_device *pdev = tegra->pdev;
 	int err = 0;
 
-	/* get clock handle for pllu clock. */
-	tegra->pllu_clk = devm_clk_get(&pdev->dev, "pll_u");
-	if (IS_ERR(tegra->pllu_clk)) {
-		dev_err(&pdev->dev, "%s: Failed to get pllu clock\n", __func__);
-		err = PTR_ERR(tegra->pllu_clk);
-		goto err_clk;
-	}
-
-	/* enable pllu clock */
-	err = clk_enable(tegra->pllu_clk);
-	if (err) {
-		dev_err(&pdev->dev, "%s: could not enable pllu clock\n",
-			__func__);
-		goto err_clk;
-	}
-
-	tegra->utmip_clk = devm_clk_get(&pdev->dev, "utmip-pad");
-	if (IS_ERR(tegra->utmip_clk)) {
-		dev_err(&pdev->dev, "%s: can't get utmip clock\n", __func__);
-		err = PTR_ERR(tegra->utmip_clk);
-		goto err_disable_pllu;
-	}
-
-	utmipll_iddq_workaround(tegra);
-
-	/* enable utmip clock */
-	err = clk_enable(tegra->utmip_clk);
-	if (err) {
-		dev_err(&pdev->dev, "%s: could not enable utmip clock\n",
-			__func__);
-		goto err_disable_pllu;
-	}
-
-	tegra->plle_re_vco_clk = devm_clk_get(&pdev->dev, "pll_re_vco");
-	if (IS_ERR(tegra->plle_re_vco_clk)) {
-		dev_err(&pdev->dev, "%s: Failed to get plle_re_vco_clk\n",
-			__func__);
-		goto err_disable_pll_re_vco;
-	}
-	err = clk_enable(tegra->plle_re_vco_clk);
-	if (err) {
-		dev_err(&pdev->dev, "%s: could not enable plle_re_vco_clk\n",
-			__func__);
-		goto err_disable_pll_re_vco;
-	}
-
-	/* Enable PLLE as well */
 	tegra->plle_clk = devm_clk_get(&pdev->dev, "pll_e");
 	if (IS_ERR(tegra->plle_clk)) {
 		dev_err(&pdev->dev, "%s: Failed to get plle clock\n", __func__);
 		err = PTR_ERR(tegra->plle_clk);
-		goto err_disable_utmi_pad;
+		return err;
 	}
-	/* enable plle clock */
 	err = clk_enable(tegra->plle_clk);
 	if (err) {
 		dev_err(&pdev->dev, "%s: could not enable plle clock\n",
 			__func__);
-		goto err_disable_utmi_pad;
+		return err;
 	}
 
-	return err;
-
-err_disable_utmi_pad:
-	clk_disable(tegra->utmip_clk);
-err_disable_pll_re_vco:
-	clk_disable(tegra->plle_re_vco_clk);
-err_disable_pllu:
-	clk_disable(tegra->pllu_clk);
-err_clk:
 	return err;
 }
 
 static void tegra_usb2_clocks_deinit(struct tegra_xhci_hcd *tegra)
 {
 	clk_disable(tegra->plle_clk);
-	clk_disable(tegra->utmip_clk);
-	clk_disable(tegra->plle_re_vco_clk);
-	clk_disable(tegra->pllu_clk);
 	tegra->plle_clk = NULL;
-	tegra->utmip_clk = NULL;
-	tegra->plle_re_vco_clk = NULL;
-	tegra->pllu_clk = NULL;
 }
 
 static int tegra_xusb_partitions_clk_init(struct tegra_xhci_hcd *tegra)
@@ -1257,11 +584,25 @@ static int tegra_xusb_partitions_clk_init(struct tegra_xhci_hcd *tegra)
 	struct platform_device *pdev = tegra->pdev;
 	int err = 0;
 
+	tegra->emc_clk = devm_clk_get(&pdev->dev, "emc");
+	if (IS_ERR(tegra->emc_clk)) {
+		dev_err(&pdev->dev, "Failed to get xusb.emc clock\n");
+		return PTR_ERR(tegra->emc_clk);
+	}
+
+	tegra->pll_re_vco_clk = devm_clk_get(&pdev->dev, "pll_re_vco");
+	if (IS_ERR(tegra->pll_re_vco_clk)) {
+		dev_err(&pdev->dev, "Failed to get refPLLE clock\n");
+		err = PTR_ERR(tegra->pll_re_vco_clk);
+		goto get_emc_clk_failed;
+	}
+
 	/* get the clock handle of 120MHz clock source */
 	tegra->pll_u_480M = devm_clk_get(&pdev->dev, "pll_u_480M");
 	if (IS_ERR(tegra->pll_u_480M)) {
 		dev_err(&pdev->dev, "Failed to get pll_u_480M clk handle\n");
-		return PTR_ERR(tegra->pll_u_480M);
+		err = PTR_ERR(tegra->pll_u_480M);
+		goto get_pll_u_480M_failed;
 	}
 
 	/* get the clock handle of 12MHz clock source */
@@ -1272,7 +613,23 @@ static int tegra_xusb_partitions_clk_init(struct tegra_xhci_hcd *tegra)
 		goto clk_get_clk_m_failed;
 	}
 
-	tegra->ss_clk = devm_clk_get(&pdev->dev, "ss_src");
+	tegra->ss_src_clk = devm_clk_get(&pdev->dev, "ss_src");
+	if (IS_ERR(tegra->ss_src_clk)) {
+		dev_err(&pdev->dev, "Failed to get SSPI clk\n");
+		err = PTR_ERR(tegra->ss_src_clk);
+		tegra->ss_src_clk = NULL;
+		goto get_ss_src_clk_failed;
+	}
+
+	tegra->host_clk = devm_clk_get(&pdev->dev, "host");
+	if (IS_ERR(tegra->host_clk)) {
+		dev_err(&pdev->dev, "Failed to get host partition clk\n");
+		err = PTR_ERR(tegra->host_clk);
+		tegra->host_clk = NULL;
+		goto get_host_clk_failed;
+	}
+
+	tegra->ss_clk = devm_clk_get(&pdev->dev, "ss");
 	if (IS_ERR(tegra->ss_clk)) {
 		dev_err(&pdev->dev, "Failed to get ss partition clk\n");
 		err = PTR_ERR(tegra->ss_clk);
@@ -1280,99 +637,106 @@ static int tegra_xusb_partitions_clk_init(struct tegra_xhci_hcd *tegra)
 		goto get_ss_clk_failed;
 	}
 
-	tegra->host_partition_clk = devm_clk_get(&pdev->dev, "host");
-	if (IS_ERR(tegra->host_partition_clk)) {
-		dev_err(&pdev->dev, "Failed to get host partition clk\n");
-		err = PTR_ERR(tegra->host_partition_clk);
-		tegra->host_partition_clk = NULL;
-		goto get_host_partition_clk_failed;
+	err = clk_enable(tegra->pll_re_vco_clk);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to enable host partition clk\n");
+		goto enable_pll_re_vco_clk_failed;
 	}
-
-	tegra->ss_partition_clk = devm_clk_get(&pdev->dev, "ss");
-	if (IS_ERR(tegra->ss_partition_clk)) {
-		dev_err(&pdev->dev, "Failed to get ss partition clk\n");
-		err = PTR_ERR(tegra->ss_partition_clk);
-		tegra->ss_partition_clk = NULL;
-		goto get_ss_partition_clk_failed;
-	}
-
-	tegra->dev_partition_clk = devm_clk_get(&pdev->dev, "dev");
-	if (IS_ERR(tegra->dev_partition_clk)) {
-		dev_err(&pdev->dev, "Failed to get dev partition clk\n");
-		err = PTR_ERR(tegra->dev_partition_clk);
-		tegra->dev_partition_clk = NULL;
-		goto get_dev_partition_clk_failed;
-	}
-
 	/* enable ss clock */
+	err = clk_enable(tegra->host_clk);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to enable host partition clk\n");
+		goto enable_host_clk_failed;
+	}
+
 	err = clk_enable(tegra->ss_clk);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to enable ss partition clk\n");
-		goto enable_ss_clk_failed;
+		goto eanble_ss_clk_failed;
 	}
 
-	err = clk_enable(tegra->host_partition_clk);
+	err = clk_enable(tegra->emc_clk);
 	if (err) {
-		dev_err(&pdev->dev, "Failed to enable host partition clk\n");
-		goto enable_host_partition_clk_failed;
-	}
-
-	err = clk_enable(tegra->ss_partition_clk);
-	if (err) {
-		dev_err(&pdev->dev, "Failed to enable ss partition clk\n");
-		goto eanble_ss_partition_clk_failed;
-	}
-
-	err = clk_enable(tegra->dev_partition_clk);
-	if (err) {
-		dev_err(&pdev->dev, "Failed to enable dev partition clk\n");
-		goto enable_dev_partition_clk_failed;
+		dev_err(&pdev->dev, "Failed to enable xusb.emc clk\n");
+		goto eanble_emc_clk_failed;
 	}
 
 	return 0;
 
-enable_dev_partition_clk_failed:
-	clk_disable(tegra->ss_partition_clk);
-
-eanble_ss_partition_clk_failed:
-	clk_disable(tegra->host_partition_clk);
-
-enable_host_partition_clk_failed:
+eanble_emc_clk_failed:
 	clk_disable(tegra->ss_clk);
 
-enable_ss_clk_failed:
-	tegra->dev_partition_clk = NULL;
+eanble_ss_clk_failed:
+	clk_disable(tegra->host_clk);
 
-get_dev_partition_clk_failed:
-	tegra->ss_partition_clk = NULL;
+enable_host_clk_failed:
+	clk_disable(tegra->pll_re_vco_clk);
 
-get_ss_partition_clk_failed:
-	tegra->host_partition_clk = NULL;
-
-get_host_partition_clk_failed:
+enable_pll_re_vco_clk_failed:
 	tegra->ss_clk = NULL;
 
 get_ss_clk_failed:
+	tegra->host_clk = NULL;
+
+get_host_clk_failed:
+	tegra->ss_src_clk = NULL;
+
+get_ss_src_clk_failed:
 	tegra->clk_m = NULL;
 
 clk_get_clk_m_failed:
 	tegra->pll_u_480M = NULL;
+
+get_pll_u_480M_failed:
+	tegra->pll_re_vco_clk = NULL;
+
+get_emc_clk_failed:
+	tegra->emc_clk = NULL;
 
 	return err;
 }
 
 static void tegra_xusb_partitions_clk_deinit(struct tegra_xhci_hcd *tegra)
 {
-	clk_disable(tegra->dev_partition_clk);
-	clk_disable(tegra->ss_partition_clk);
-	clk_disable(tegra->host_partition_clk);
 	clk_disable(tegra->ss_clk);
-	tegra->dev_partition_clk = NULL;
-	tegra->ss_partition_clk = NULL;
-	tegra->host_partition_clk = NULL;
+	clk_disable(tegra->host_clk);
+	clk_disable(tegra->pll_re_vco_clk);
 	tegra->ss_clk = NULL;
+	tegra->host_clk = NULL;
+	tegra->ss_src_clk = NULL;
 	tegra->clk_m = NULL;
 	tegra->pll_u_480M = NULL;
+	tegra->pll_re_vco_clk = NULL;
+}
+
+static void tegra_xhci_rx_idle_mode_override(struct tegra_xhci_hcd *tegra,
+	bool enable)
+{
+	u32 reg;
+
+	if (tegra->bdata->portmap & TEGRA_XUSB_SS_P0) {
+		reg = readl(tegra->padctl_base + IOPHY_MISC_PAD0_CTL_3_0);
+		if (enable) {
+			reg &= ~RX_IDLE_MODE;
+			reg |= RX_IDLE_MODE_OVRD;
+		} else {
+			reg |= RX_IDLE_MODE;
+			reg &= ~RX_IDLE_MODE_OVRD;
+		}
+		writel(reg, tegra->padctl_base + IOPHY_MISC_PAD0_CTL_3_0);
+	}
+
+	if (tegra->bdata->portmap & TEGRA_XUSB_SS_P1) {
+		reg = readl(tegra->padctl_base + IOPHY_MISC_PAD1_CTL_3_0);
+		if (enable) {
+			reg &= ~RX_IDLE_MODE;
+			reg |= RX_IDLE_MODE_OVRD;
+		} else {
+			reg |= RX_IDLE_MODE;
+			reg &= ~RX_IDLE_MODE_OVRD;
+		}
+		writel(reg, tegra->padctl_base + IOPHY_MISC_PAD1_CTL_3_0);
+	}
 }
 
 /* Enable ss clk, host clk, falcon clk,
@@ -1387,6 +751,12 @@ tegra_xusb_request_clk_rate(struct tegra_xhci_hcd *tegra,
 	enum MBOX_CMD_TYPE cmd_ack = MBOX_CMD_ACK;
 	int fw_req_rate = rate, cur_rate;
 
+	/* Do not handle clock change as needed for HS disconnect issue */
+	if (tegra->pdata->quirks & TEGRA_XUSB_NEED_HS_DISCONNECT_SW_WAR) {
+		*sw_resp = fw_req_rate | (MBOX_CMD_ACK << MBOX_CMD_SHIFT);
+		return ret;
+	}
+
 	/* frequency request from firmware is in KHz.
 	 * Convert it to MHz
 	 */
@@ -1400,15 +770,21 @@ tegra_xusb_request_clk_rate(struct tegra_xhci_hcd *tegra,
 		*sw_resp = fw_req_rate;
 	} else {
 
-		if (clk_handle == tegra->ss_clk && fw_req_rate == 12000) {
+		if (clk_handle == tegra->ss_src_clk && fw_req_rate == 12000) {
 			/* Change SS clock source to CLK_M at 12MHz */
 			clk_set_parent(clk_handle, tegra->clk_m);
 			clk_set_rate(clk_handle, fw_req_rate * 1000);
-		} else if (clk_handle == tegra->ss_clk &&
+
+			/* save leakage power when SS freq is being decreased */
+			tegra_xhci_rx_idle_mode_override(tegra, true);
+		} else if (clk_handle == tegra->ss_src_clk &&
 				fw_req_rate == 120000) {
 			/* Change SS clock source to HSIC_480 at 120MHz */
 			clk_set_rate(clk_handle,  3000 * 1000);
 			clk_set_parent(clk_handle, tegra->pll_u_480M);
+
+			/* clear ovrd bits when SS freq is being increased */
+			tegra_xhci_rx_idle_mode_override(tegra, false);
 		}
 
 		*sw_resp = clk_get_rate(clk_handle);
@@ -1429,22 +805,26 @@ tegra_xhci_ss_wake_on_interrupts(struct tegra_xhci_hcd *tegra, bool enable)
 {
 	u32 elpg_program0;
 
+	/* clear any event */
 	elpg_program0 = readl(tegra->padctl_base + ELPG_PROGRAM_0);
 	elpg_program0 |= (SS_PORT0_WAKEUP_EVENT | SS_PORT1_WAKEUP_EVENT);
-
 	writel(elpg_program0, tegra->padctl_base + ELPG_PROGRAM_0);
 
-	/* Enable ss wake interrupts */
+	/* enable ss wake interrupts */
 	elpg_program0 = readl(tegra->padctl_base + ELPG_PROGRAM_0);
 
 	if (enable) {
 		/* enable interrupts */
-		elpg_program0 |= (SS_PORT0_WAKE_INTERRUPT_ENABLE |
-				SS_PORT1_WAKE_INTERRUPT_ENABLE);
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P0)
+			elpg_program0 |= SS_PORT0_WAKE_INTERRUPT_ENABLE;
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P1)
+			elpg_program0 |= SS_PORT1_WAKE_INTERRUPT_ENABLE;
 	} else {
 		/* disable interrupts */
-		elpg_program0 &= ~(SS_PORT0_WAKE_INTERRUPT_ENABLE |
-				SS_PORT1_WAKE_INTERRUPT_ENABLE);
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P0)
+			elpg_program0 &= ~SS_PORT0_WAKE_INTERRUPT_ENABLE;
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P1)
+			elpg_program0 &= ~SS_PORT1_WAKE_INTERRUPT_ENABLE;
 	}
 	writel(elpg_program0, tegra->padctl_base + ELPG_PROGRAM_0);
 }
@@ -1455,24 +835,33 @@ tegra_xhci_hs_wake_on_interrupts(struct tegra_xhci_hcd *tegra, bool enable)
 	u32 elpg_program0;
 
 	elpg_program0 = readl(tegra->padctl_base + ELPG_PROGRAM_0);
-	elpg_program0 |= (USB2_PORT0_WAKEUP_EVENT | USB2_PORT1_WAKEUP_EVENT |
-			USB2_HSIC_PORT0_WAKEUP_EVENT |
-			USB2_HSIC_PORT1_WAKEUP_EVENT);
+	elpg_program0 |= (USB2_PORT0_WAKEUP_EVENT | USB2_PORT1_WAKEUP_EVENT
+			| USB2_HSIC_PORT0_WAKEUP_EVENT
+			| USB2_HSIC_PORT1_WAKEUP_EVENT);
 	writel(elpg_program0, tegra->padctl_base + ELPG_PROGRAM_0);
 
 	/* Enable the wake interrupts */
 	elpg_program0 = readl(tegra->padctl_base + ELPG_PROGRAM_0);
-	if (enable)
+	if (enable) {
 		/* enable interrupts */
-		elpg_program0 |= (USB2_PORT0_WAKE_INTERRUPT_ENABLE |
-				USB2_PORT1_WAKE_INTERRUPT_ENABLE |
-				USB2_HSIC_PORT0_WAKE_INTERRUPT_ENABLE |
-				USB2_HSIC_PORT1_WAKE_INTERRUPT_ENABLE);
-	else
-		elpg_program0 &= ~(USB2_PORT0_WAKE_INTERRUPT_ENABLE |
-				USB2_PORT1_WAKE_INTERRUPT_ENABLE |
-				USB2_HSIC_PORT0_WAKE_INTERRUPT_ENABLE |
-				USB2_HSIC_PORT1_WAKE_INTERRUPT_ENABLE);
+		if (tegra->bdata->portmap & TEGRA_XUSB_USB2_P0)
+			elpg_program0 |= USB2_PORT0_WAKE_INTERRUPT_ENABLE;
+		if (tegra->bdata->portmap & TEGRA_XUSB_USB2_P1)
+			elpg_program0 |= USB2_PORT1_WAKE_INTERRUPT_ENABLE;
+		if (tegra->bdata->portmap & TEGRA_XUSB_HSIC_P0)
+			elpg_program0 |= USB2_HSIC_PORT0_WAKE_INTERRUPT_ENABLE;
+		if (tegra->bdata->portmap & TEGRA_XUSB_HSIC_P1)
+			elpg_program0 |= USB2_HSIC_PORT1_WAKE_INTERRUPT_ENABLE;
+	} else {
+		if (tegra->bdata->portmap & TEGRA_XUSB_USB2_P0)
+			elpg_program0 &= ~USB2_PORT0_WAKE_INTERRUPT_ENABLE;
+		if (tegra->bdata->portmap & TEGRA_XUSB_USB2_P1)
+			elpg_program0 &= ~USB2_PORT1_WAKE_INTERRUPT_ENABLE;
+		if (tegra->bdata->portmap & TEGRA_XUSB_HSIC_P0)
+			elpg_program0 &= ~USB2_HSIC_PORT0_WAKE_INTERRUPT_ENABLE;
+		if (tegra->bdata->portmap & TEGRA_XUSB_HSIC_P1)
+			elpg_program0 &= ~USB2_HSIC_PORT1_WAKE_INTERRUPT_ENABLE;
+	}
 	writel(elpg_program0, tegra->padctl_base + ELPG_PROGRAM_0);
 }
 
@@ -1485,12 +874,17 @@ tegra_xhci_ss_wake_signal(struct tegra_xhci_hcd *tegra, bool enable)
 
 	/* Assert/Deassert clamp_en_early signals to SSP0/1 */
 	elpg_program0 = readl(tegra->padctl_base + ELPG_PROGRAM_0);
-	if (enable)
-		elpg_program0 |= (SSP0_ELPG_CLAMP_EN_EARLY |
-				SSP1_ELPG_CLAMP_EN_EARLY);
-	else
-		elpg_program0 &= ~(SSP0_ELPG_CLAMP_EN_EARLY |
-				SSP1_ELPG_CLAMP_EN_EARLY);
+	if (enable) {
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P0)
+			elpg_program0 |= SSP0_ELPG_CLAMP_EN_EARLY;
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P1)
+			elpg_program0 |= SSP1_ELPG_CLAMP_EN_EARLY;
+	} else {
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P0)
+			elpg_program0 &= ~SSP0_ELPG_CLAMP_EN_EARLY;
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P1)
+			elpg_program0 &= ~SSP1_ELPG_CLAMP_EN_EARLY;
+	}
 	writel(elpg_program0, tegra->padctl_base + ELPG_PROGRAM_0);
 
 	/*
@@ -1502,10 +896,17 @@ tegra_xhci_ss_wake_signal(struct tegra_xhci_hcd *tegra, bool enable)
 	/* Assert/Deassert clam_en signal */
 	elpg_program0 = readl(tegra->padctl_base + ELPG_PROGRAM_0);
 
-	if (enable)
-		elpg_program0 |= (SSP0_ELPG_CLAMP_EN | SSP1_ELPG_CLAMP_EN);
-	else
-		elpg_program0 &= ~(SSP0_ELPG_CLAMP_EN | SSP1_ELPG_CLAMP_EN);
+	if (enable) {
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P0)
+			elpg_program0 |= SSP0_ELPG_CLAMP_EN;
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P1)
+			elpg_program0 |= SSP1_ELPG_CLAMP_EN;
+	} else {
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P0)
+			elpg_program0 &= ~SSP0_ELPG_CLAMP_EN;
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P1)
+			elpg_program0 &= ~SSP1_ELPG_CLAMP_EN;
+	}
 
 	writel(elpg_program0, tegra->padctl_base + ELPG_PROGRAM_0);
 
@@ -1519,54 +920,21 @@ tegra_xhci_ss_vcore(struct tegra_xhci_hcd *tegra, bool enable)
 {
 	u32 elpg_program0;
 
-
 	/* Assert vcore_off signal */
 	elpg_program0 = readl(tegra->padctl_base + ELPG_PROGRAM_0);
 
-	if (enable)
-		elpg_program0 |= (SSP0_ELPG_VCORE_DOWN|SSP1_ELPG_VCORE_DOWN);
-	else
-		elpg_program0 &= ~(SSP0_ELPG_VCORE_DOWN|SSP1_ELPG_VCORE_DOWN);
-
-	writel(elpg_program0, tegra->padctl_base + ELPG_PROGRAM_0);
-}
-
-static void
-tegra_xhci_padctl_enable_usb_vbus(struct tegra_xhci_hcd *tegra)
-{
-	u32 reg;
-	struct tegra_xusb_pad_data *xusb_padctl = tegra->xusb_padctl;
-	struct xhci_hcd *xhci = tegra->xhci;
-
-	/* Program the following XUSB PADCTL registers to
-	 * 0x7 to disable the over current signal mapping
-	 * for USB 2.0 ports owned by XUSB and USB2:
-	 */
-	reg = readl(tegra->padctl_base + SNPS_OC_MAP_0);
-	reg |= xusb_padctl->snps_oc_map;
-	writel(reg, tegra->padctl_base + SNPS_OC_MAP_0);
-	reg = readl(tegra->padctl_base + SNPS_OC_MAP_0);
-
-	reg = readl(tegra->padctl_base + OC_DET_0);
-	reg = xusb_padctl->oc_det;
-	writel(reg, tegra->padctl_base + OC_DET_0);
-
-	/* check if over current seen. Clear if present */
-	reg = readl(tegra->padctl_base + OC_DET_0);
-	if (reg & (0x3 << 20)) {
-		xhci_info(xhci, "Over current detected. Clearing...\n");
-		writel(reg, tegra->padctl_base + OC_DET_0);
-
-		usleep_range(100, 200);
-
-		reg = readl(tegra->padctl_base + OC_DET_0);
-		if (reg & (0x3 << 20))
-			xhci_info(xhci, "Over current still present\n");
+	if (enable) {
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P0)
+			elpg_program0 |= SSP0_ELPG_VCORE_DOWN;
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P1)
+			elpg_program0 |= SSP1_ELPG_VCORE_DOWN;
+	} else {
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P0)
+			elpg_program0 &= ~SSP0_ELPG_VCORE_DOWN;
+		if (tegra->bdata->portmap & TEGRA_XUSB_SS_P1)
+			elpg_program0 &= ~SSP1_ELPG_VCORE_DOWN;
 	}
-
-	reg = readl(tegra->padctl_base + USB2_OC_MAP_0);
-	reg |= xusb_padctl->usb2_oc_map;
-	writel(reg, tegra->padctl_base + USB2_OC_MAP_0);
+	writel(elpg_program0, tegra->padctl_base + ELPG_PROGRAM_0);
 }
 
 static void utmip_biaspd_workaround(struct tegra_xhci_hcd *tegra)
@@ -1596,6 +964,230 @@ static void utmip_biaspd_workaround(struct tegra_xhci_hcd *tegra)
 	}
 }
 
+static void tegra_xhci_save_dfe_ctle_context(struct tegra_xhci_hcd *tegra,
+	u8 port)
+{
+	struct xhci_hcd *xhci = tegra->xhci;
+	u32 offset;
+	u32 reg;
+
+	xhci_info(xhci, "saving dfe_cntl and ctle context for port %d\n", port);
+
+	offset = port ? IOPHY_MISC_PAD1_CTL_6_0 : IOPHY_MISC_PAD0_CTL_6_0;
+
+	/* save tap1_val[] for the port for dfe_cntl */
+	reg = readl(tegra->padctl_base + offset);
+	reg &= ~(0xff << 16);
+	reg |= (0x32 << 16);
+	writel(reg, tegra->padctl_base + offset);
+
+	reg = readl(tegra->padctl_base + offset);
+	tegra->sregs.tap1_val[port] = ((reg & (0x1f << 24)) >> 24);
+
+	/* save amp_val[] for the port for dfe_cntl */
+	reg = readl(tegra->padctl_base + offset);
+	reg &= ~(0xff << 16);
+	reg |= (0x33 << 16);
+	writel(reg, tegra->padctl_base + offset);
+
+	reg = readl(tegra->padctl_base + offset);
+	tegra->sregs.amp_val[port] = ((reg & (0x7f << 24)) >> 24);
+
+	/* save ctle_z_val[] for the port for ctle */
+	reg = readl(tegra->padctl_base + offset);
+	reg &= ~(0xff << 16);
+	reg |= (0x20 << 16);
+	writel(reg, tegra->padctl_base + offset);
+
+	reg = readl(tegra->padctl_base + offset);
+	tegra->sregs.ctle_z_val[port] = ((reg & (0x3f << 24)) >> 24);
+
+	/* save ctle_g_val[] for the port for ctle */
+	reg = readl(tegra->padctl_base + offset);
+	reg &= ~(0xff << 16);
+	reg |= (0x21 << 16);
+	writel(reg, tegra->padctl_base + offset);
+
+	reg = readl(tegra->padctl_base + offset);
+	tegra->sregs.ctle_g_val[port] = ((reg & (0x3f << 24)) >> 24);
+	tegra->dfe_ctle_ctx_saved = true;
+}
+
+static void tegra_xhci_restore_dfe_ctle_context(struct tegra_xhci_hcd *tegra,
+	u8 port)
+{
+	struct xhci_hcd *xhci = tegra->xhci;
+	u32 ctl4_offset, ctl2_offset;
+	u32 reg;
+
+	/* don't restore if not saved */
+	if (tegra->dfe_ctle_ctx_saved == false)
+		return;
+
+	ctl4_offset = port ? IOPHY_USB3_PAD1_CTL_4_0 : IOPHY_USB3_PAD0_CTL_4_0;
+	ctl2_offset = port ? IOPHY_USB3_PAD1_CTL_2_0 : IOPHY_USB3_PAD0_CTL_2_0;
+
+	xhci_info(xhci, "restoring dfe_cntl/ctle context of port %d\n", port);
+
+	/* restore dfe_cntl for the port */
+	reg = readl(tegra->padctl_base + ctl4_offset);
+	reg &= ~((0x7f << 16) | (0x1f << 24));
+	reg |= ((tegra->sregs.amp_val[port] << 16) |
+		(tegra->sregs.tap1_val[port] << 24));
+	writel(reg, tegra->padctl_base + ctl4_offset);
+
+	/* restore ctle for the port */
+	reg = readl(tegra->padctl_base + ctl2_offset);
+	reg &= ~((0x3f << 8) | (0x3f << 16));
+	reg |= ((tegra->sregs.ctle_g_val[port] << 8) |
+		(tegra->sregs.ctle_z_val[port] << 16));
+	writel(reg, tegra->padctl_base + ctl2_offset);
+}
+
+static void tegra_xhci_program_ulpi_pad(struct tegra_xhci_hcd *tegra,
+	u8 port)
+{
+	u32 reg;
+
+	reg = readl(tegra->padctl_base + USB2_PAD_MUX_0);
+	reg &= ~USB2_ULPI_PAD;
+	reg |= USB2_ULPI_PAD_OWNER_XUSB;
+	writel(reg, tegra->padctl_base + USB2_PAD_MUX_0);
+
+	reg = readl(tegra->padctl_base + USB2_PORT_CAP_0);
+	reg &= ~USB2_ULPI_PORT_CAP;
+	reg |= (tegra->bdata->ulpicap << 24);
+	writel(reg, tegra->padctl_base + USB2_PORT_CAP_0);
+	/* FIXME: Program below when more details available
+	 * XUSB_PADCTL_ULPI_LINK_TRIM_CONTROL_0
+	 * XUSB_PADCTL_ULPI_NULL_CLK_TRIM_CONTROL_0
+	 */
+}
+
+static void tegra_xhci_program_hsic_pad(struct tegra_xhci_hcd *tegra,
+	u8 port)
+{
+	u32 ctl0_offset;
+	u32 reg;
+
+	reg = readl(tegra->padctl_base + USB2_PAD_MUX_0);
+	reg &= ~(port ? USB2_HSIC_PAD_PORT1 : USB2_HSIC_PAD_PORT0);
+	reg |= port ? USB2_HSIC_PAD_P1_OWNER_XUSB :
+			USB2_HSIC_PAD_P0_OWNER_XUSB;
+	writel(reg, tegra->padctl_base + USB2_PAD_MUX_0);
+
+	ctl0_offset = port ? HSIC_PAD1_CTL_0_0 : HSIC_PAD0_CTL_0_0;
+
+	reg = readl(tegra->padctl_base + ctl0_offset);
+	reg &= ~(HSIC_TX_SLEWP | HSIC_TX_SLEWN);
+	writel(reg, tegra->padctl_base + ctl0_offset);
+
+	/* FIXME Program below when more details available
+	 * XUSB_PADCTL_HSIC_PAD0_CTL_0_0
+	 * XUSB_PADCTL_HSIC_PAD0_CTL_1_0
+	 * XUSB_PADCTL_HSIC_PAD0_CTL_2_0
+	 * XUSB_PADCTL_HSIC_PAD1_CTL_0_0
+	 * XUSB_PADCTL_HSIC_PAD1_CTL_1_0
+	 * XUSB_PADCTL_HSIC_PAD1_CTL_2_0
+	 * XUSB_PADCTL_HSIC_STRB_TRIM_CONTROL_0
+	 */
+}
+
+static void tegra_xhci_program_utmip_pad(struct tegra_xhci_hcd *tegra,
+	u8 port)
+{
+	u32 reg;
+	u32 ctl0_offset, ctl1_offset;
+
+	reg = readl(tegra->padctl_base + USB2_PAD_MUX_0);
+	reg &= ~USB2_OTG_PAD_PORT_MASK(port);
+	reg |= USB2_OTG_PAD_PORT_OWNER_XUSB(port);
+	writel(reg, tegra->padctl_base + USB2_PAD_MUX_0);
+
+	reg = readl(tegra->padctl_base + USB2_PORT_CAP_0);
+	reg &= ~USB2_PORT_CAP_MASK(port);
+	reg |= USB2_PORT_CAP_HOST(port);
+	writel(reg, tegra->padctl_base + USB2_PORT_CAP_0);
+
+	reg = readl(tegra->padctl_base + SNPS_OC_MAP_0);
+	if (port == 0)
+		reg |= SNPS_OC_MAP_CTRL1 | SNPS_OC_MAP_CTRL2 |
+			SNPS_OC_MAP_CTRL3;
+	else if (port == 1)
+		reg |= SNPS_OC_MAP_CTRL2 | SNPS_OC_MAP_CTRL3 |
+			SNPS_CTRL1_OC_DETECTED_VBUS_PAD0;
+	writel(reg, tegra->padctl_base + SNPS_OC_MAP_0);
+	reg = readl(tegra->padctl_base + SNPS_OC_MAP_0);
+
+	reg = readl(tegra->padctl_base + OC_DET_0);
+	if (port == 0)
+		reg |= OC_DET_VBUS_ENABLE0_OC_MAP | OC_DET_VBUS_ENABLE1_OC_MAP;
+	else if (port == 1)
+		reg |= OC_DET_VBUS_EN0_OC_DETECTED_VBUS_PAD0
+			| OC_DET_VBUS_EN1_OC_DETECTED_VBUS_PAD1;
+	writel(reg, tegra->padctl_base + OC_DET_0);
+
+	reg = readl(tegra->padctl_base + USB2_OC_MAP_0);
+	if (port == 0)
+		reg |= USB2_OC_MAP_PORT1
+			| USB2_OC_MAP_PORT0_OC_DETECTED_VBUS_PAD0;
+	else if (port == 1)
+		reg |= USB2_OC_MAP_PORT0
+			| USB2_OC_MAP_PORT1_OC_DETECTED_VBUS_PAD1;
+	writel(reg, tegra->padctl_base + USB2_OC_MAP_0);
+
+	ctl0_offset = port ? USB2_OTG_PAD1_CTL_0_0 : USB2_OTG_PAD0_CTL_0_0;
+	ctl1_offset = port ? USB2_OTG_PAD1_CTL_1_0 : USB2_OTG_PAD0_CTL_1_0;
+
+	reg = readl(tegra->padctl_base + ctl0_offset);
+	reg &= ~(USB2_OTG_HS_CURR_LVL | USB2_OTG_HS_SLEW |
+		USB2_OTG_FS_SLEW | USB2_OTG_LS_RSLEW |
+		USB2_OTG_PD | USB2_OTG_PD2 | USB2_OTG_PD_ZI);
+	reg |= tegra->pdata->hs_slew;
+	reg |= port ? 0 : tegra->pdata->ls_rslew;
+	reg |= port ? tegra->pdata->hs_curr_level_pad1 :
+			tegra->pdata->hs_curr_level_pad0;
+	writel(reg, tegra->padctl_base + ctl0_offset);
+
+	reg = readl(tegra->padctl_base + ctl1_offset);
+	reg &= ~(USB2_OTG_TERM_RANGE_AD | USB2_OTG_HS_IREF_CAP
+		| USB2_OTG_PD_CHRP_FORCE_POWERUP
+		| USB2_OTG_PD_DISC_FORCE_POWERUP
+		| USB2_OTG_PD_DR);
+	reg |= (tegra->pdata->hs_iref_cap << 9) |
+		(tegra->pdata->hs_term_range_adj << 3);
+	writel(reg, tegra->padctl_base + ctl1_offset);
+}
+
+static void tegra_xhci_program_ss_pad(struct tegra_xhci_hcd *tegra,
+	u8 port)
+{
+	u32 ctl2_offset, ctl4_offset;
+	u32 reg;
+
+	ctl2_offset = port ? IOPHY_USB3_PAD1_CTL_2_0 : IOPHY_USB3_PAD0_CTL_2_0;
+	ctl4_offset = port ? IOPHY_USB3_PAD1_CTL_4_0 : IOPHY_USB3_PAD0_CTL_4_0;
+
+	reg = readl(tegra->padctl_base + ctl2_offset);
+	reg &= ~(IOPHY_USB3_RXWANDER | IOPHY_USB3_RXEQ |
+		IOPHY_USB3_CDRCNTL);
+	reg |= tegra->pdata->rx_wander | tegra->pdata->rx_eq |
+		tegra->pdata->cdr_cntl;
+	writel(reg, tegra->padctl_base + ctl2_offset);
+
+	reg = readl(tegra->padctl_base + ctl4_offset);
+	reg = tegra->pdata->dfe_cntl;
+	writel(reg, tegra->padctl_base + ctl4_offset);
+
+	reg = readl(tegra->padctl_base + SS_PORT_MAP_0);
+	reg &= ~(port ? SS_PORT_MAP_P1 : SS_PORT_MAP_P0);
+	reg |= (tegra->bdata->ss_portmap &
+		(port ? TEGRA_XUSB_SS1_PORT_MAP : TEGRA_XUSB_SS0_PORT_MAP));
+	writel(reg, tegra->padctl_base + SS_PORT_MAP_0);
+
+	tegra_xhci_restore_dfe_ctle_context(tegra, port);
+}
+
 /* This function assigns the USB ports to the controllers,
  * then programs the port capabilities and pad parameters
  * of ports assigned to XUSB after booted to OS.
@@ -1604,104 +1196,70 @@ void
 tegra_xhci_padctl_portmap_and_caps(struct tegra_xhci_hcd *tegra)
 {
 	u32 reg;
-	struct tegra_xusb_pad_data *xusb_padctl = tegra->xusb_padctl;
-
-	/* Below line should be removed when we have clarity on why
-	 * FUSE setting read 0x10 for hs_curr_level causing
-	 * SS/HS/FS hub re-enumeration.
-	 */
-	xusb_padctl->hs_curr_level = 0x30;
-
-	/* Program the following XUSB PADCTL registers to assign
-	 * the USB2.0 ports to XUSB or USB2, according to the platform
-	 * specific configuration
-	 */
-	reg = readl(tegra->padctl_base + USB2_PAD_MUX_0);
-	reg |= xusb_padctl->pad_mux;
-	writel(reg, tegra->padctl_base + USB2_PAD_MUX_0);
-
-	/* Program the following XUSB PADCTL registers to assign
-	 * the port capabilities for USB2.0 ports owned by XUSB,
-	 * according to the platform specific configuration:
-	 */
-	reg = readl(tegra->padctl_base + USB2_PORT_CAP_0);
-	reg |= xusb_padctl->port_cap;
-	writel(reg, tegra->padctl_base + USB2_PORT_CAP_0);
-
-
-
-	/* Program the following XUSB PADCTL registers to assign
-	 * the SuperSpeed port mapping to USB2.0 ports owned by XUSB,
-	 * where the SuperSpeed ports inherit their port capabilities
-	 * from the USB2.0 ports they mapped to, according to the
-	 * platform specific configuration
-	 */
-	reg = readl(tegra->padctl_base + SS_PORT_MAP_0);
-	reg |= xusb_padctl->ss_port_map;
-	writel(reg, tegra->padctl_base + SS_PORT_MAP_0);
-
-	reg = readl(tegra->padctl_base + IOPHY_USB3_PAD0_CTL_2_0);
-	reg &= ~0xfffffff0; /* clear needed field */
-	reg |= xusb_padctl->rx_wander | xusb_padctl->rx_eq |
-			xusb_padctl->cdr_cntl;
-	writel(reg, tegra->padctl_base + IOPHY_USB3_PAD0_CTL_2_0);
-
-	reg = readl(tegra->padctl_base + IOPHY_USB3_PAD1_CTL_2_0);
-	reg &= ~0xfffffff0; /* clear needed field */
-	reg |= xusb_padctl->rx_wander | xusb_padctl->rx_eq |
-			xusb_padctl->cdr_cntl;
-	writel(reg, tegra->padctl_base + IOPHY_USB3_PAD1_CTL_2_0);
-
-	reg = readl(tegra->padctl_base + IOPHY_USB3_PAD0_CTL_4_0);
-	reg = xusb_padctl->dfe_cntl;
-	writel(reg, tegra->padctl_base + IOPHY_USB3_PAD0_CTL_4_0);
-
-	reg = readl(tegra->padctl_base + IOPHY_USB3_PAD1_CTL_4_0);
-	reg = xusb_padctl->dfe_cntl;
-	writel(reg, tegra->padctl_base + IOPHY_USB3_PAD1_CTL_4_0);
-
-	reg = readl(tegra->padctl_base + USB2_OTG_PAD0_CTL_0_0);
-	reg &= xusb_padctl->otg_pad0_ctl0;
-	reg |= xusb_padctl->hs_slew;
-	reg &= ~(0x3f << 0);
-	reg |= xusb_padctl->hs_curr_level;
-	writel(reg, tegra->padctl_base + USB2_OTG_PAD0_CTL_0_0);
-
-	reg = readl(tegra->padctl_base + USB2_OTG_PAD1_CTL_0_0);
-	reg &= xusb_padctl->otg_pad1_ctl0;
-	reg |= xusb_padctl->hs_slew;
-	reg &= ~(0x3f << 0);
-	reg |= xusb_padctl->hs_curr_level;
-	writel(reg, tegra->padctl_base + USB2_OTG_PAD1_CTL_0_0);
-
-	reg = readl(tegra->padctl_base + USB2_OTG_PAD0_CTL_1_0);
-	reg ^= xusb_padctl->otg_pad0_ctl1;
-	reg &= ~((0x3 << 9) | (0xf << 3));
-	reg |= (xusb_padctl->hs_iref_cap << 9) |
-					(xusb_padctl->hs_term_range_adj << 3);
-	writel(reg, tegra->padctl_base + USB2_OTG_PAD0_CTL_1_0);
-
-	reg = readl(tegra->padctl_base + USB2_OTG_PAD1_CTL_1_0);
-	reg ^= xusb_padctl->otg_pad1_ctl1;
-	reg &= ~((0x3 << 9) | (0xf << 3));
-	reg |= (xusb_padctl->hs_iref_cap << 9) |
-					(xusb_padctl->hs_term_range_adj << 3);
-	writel(reg, tegra->padctl_base + USB2_OTG_PAD1_CTL_1_0);
 
 	reg = readl(tegra->padctl_base + USB2_BIAS_PAD_CTL_0_0);
-	reg &= xusb_padctl->bias_pad_ctl0;
-	reg |= HS_DISCON_LEVEL(5);
-	reg &= ~(0x3 << 0);
-	reg |= xusb_padctl->hs_squelch_level;
+	reg &= ~(USB2_BIAS_HS_SQUELCH_LEVEL | USB2_BIAS_HS_DISCON_LEVEL);
+	reg |= tegra->pdata->hs_squelch_level | tegra->pdata->hs_disc_lvl;
 	writel(reg, tegra->padctl_base + USB2_BIAS_PAD_CTL_0_0);
 
-	reg = readl(tegra->padctl_base + HSIC_PAD0_CTL_0_0);
-	reg &= xusb_padctl->hsic_pad0_ctl0;
-	writel(reg, tegra->padctl_base + HSIC_PAD0_CTL_0_0);
+	reg = readl(tegra->padctl_base + SNPS_OC_MAP_0);
+	reg &= ~(SNPS_OC_MAP_CTRL1 | SNPS_OC_MAP_CTRL2 | SNPS_OC_MAP_CTRL3);
+	writel(reg, tegra->padctl_base + SNPS_OC_MAP_0);
+	reg = readl(tegra->padctl_base + SNPS_OC_MAP_0);
 
-	reg = readl(tegra->padctl_base + HSIC_PAD1_CTL_0_0);
-	reg &= xusb_padctl->hsic_pad0_ctl1;
-	writel(reg, tegra->padctl_base + HSIC_PAD1_CTL_0_0);
+	reg = readl(tegra->padctl_base + OC_DET_0);
+	reg &= ~(OC_DET_VBUS_ENABLE0_OC_MAP | OC_DET_VBUS_ENABLE1_OC_MAP);
+	writel(reg, tegra->padctl_base + OC_DET_0);
+
+	/* check if over current seen. Clear if present */
+	reg = readl(tegra->padctl_base + OC_DET_0);
+	if (reg & (0x3 << 20)) {
+		xhci_info(tegra->xhci, "Over current detected. Clearing...\n");
+		writel(reg, tegra->padctl_base + OC_DET_0);
+
+		usleep_range(100, 200);
+
+		reg = readl(tegra->padctl_base + OC_DET_0);
+		if (reg & (0x3 << 20))
+			xhci_info(tegra->xhci, "Over current still present\n");
+	}
+
+	reg = readl(tegra->padctl_base + USB2_OC_MAP_0);
+	reg &= ~(USB2_OC_MAP_PORT0 | USB2_OC_MAP_PORT1);
+	writel(reg, tegra->padctl_base + USB2_OC_MAP_0);
+
+	if (tegra->bdata->portmap & TEGRA_XUSB_USB2_P0)
+		tegra_xhci_program_utmip_pad(tegra, 0);
+	if (tegra->bdata->portmap & TEGRA_XUSB_USB2_P1)
+		tegra_xhci_program_utmip_pad(tegra, 1);
+
+	if (tegra->bdata->portmap & TEGRA_XUSB_ULPI_P0)
+		tegra_xhci_program_ulpi_pad(tegra, 0);
+
+	if (tegra->bdata->portmap & TEGRA_XUSB_HSIC_P0)
+		tegra_xhci_program_hsic_pad(tegra, 0);
+	if (tegra->bdata->portmap & TEGRA_XUSB_HSIC_P1)
+		tegra_xhci_program_hsic_pad(tegra, 1);
+
+	if (tegra->bdata->portmap & TEGRA_XUSB_SS_P0) {
+		tegra_xhci_program_ss_pad(tegra, 0);
+	} else {
+		/* set rx_idle_mode_ovrd for unused SS ports to save power */
+		reg = readl(tegra->padctl_base + IOPHY_MISC_PAD0_CTL_3_0);
+		reg &= ~RX_IDLE_MODE;
+		reg |= RX_IDLE_MODE_OVRD;
+		writel(reg, tegra->padctl_base + IOPHY_MISC_PAD0_CTL_3_0);
+	}
+
+	if (tegra->bdata->portmap & TEGRA_XUSB_SS_P1) {
+		tegra_xhci_program_ss_pad(tegra, 1);
+	} else {
+		/* set rx_idle_mode_ovrd for unused SS ports to save power */
+		reg = readl(tegra->padctl_base + IOPHY_MISC_PAD1_CTL_3_0);
+		reg &= ~RX_IDLE_MODE;
+		reg |= RX_IDLE_MODE_OVRD;
+		writel(reg, tegra->padctl_base + IOPHY_MISC_PAD1_CTL_3_0);
+	}
 
 	utmip_biaspd_workaround(tegra);
 }
@@ -1837,28 +1395,170 @@ tegra_xhci_restore_ctx(struct tegra_xhci_hcd *tegra)
 		tegra->ipfs_base + IPFS_XUSB_HOST_MCCIF_FIFOCTRL_0);
 }
 
-static int
-tegra_xhci_load_fw_from_pmc(struct tegra_xhci_hcd *tegra, bool reset)
+static void tegra_xhci_enable_fw_message(struct tegra_xhci_hcd *tegra)
 {
-	u32 cnr, count = 0xff;
 	struct platform_device *pdev = tegra->pdev;
+	u32 reg, timeout = 0xff, cmd;
 
-	if (tegra_xhci_load_firmware(tegra, reset)) {
-		dev_err(&pdev->dev, "Firmware load unsuccessful\n");
-		return -ENODEV;
+	mutex_lock(&tegra->mbox_lock);
+
+	do {
+		writel(MBOX_OWNER_SW,
+			tegra->fpci_base + XUSB_CFG_ARU_MBOX_OWNER);
+		reg = readl(tegra->fpci_base + XUSB_CFG_ARU_MBOX_OWNER);
+		usleep_range(10, 20);
+	} while (reg != MBOX_OWNER_SW && timeout--);
+
+	if ((timeout == 0) && (reg != MBOX_OWNER_SW)) {
+		dev_err(&pdev->dev, "Failed to set mbox message owner ID\n");
+		mutex_unlock(&tegra->mbox_lock);
+		return;
 	}
 
-	/* wait for CNR to get set */
+	writel((MBOX_CMD_MSG_ENABLED << MBOX_CMD_SHIFT),
+			tegra->fpci_base + XUSB_CFG_ARU_MBOX_DATA_IN);
+
+	cmd = readl(tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
+	cmd |= MBOX_INT_EN | MBOX_FALC_INT_EN;
+	writel(cmd, tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
+
+	mutex_unlock(&tegra->mbox_lock);
+}
+
+static int load_firmware(struct tegra_xhci_hcd *tegra, bool resetARU)
+{
+	struct platform_device *pdev = tegra->pdev;
+	struct cfgtbl *cfg_tbl = (struct cfgtbl *) tegra->firmware.data;
+	u32 phys_addr_lo;
+	u32 HwReg;
+	u16 nblocks;
+	time_t fw_time;
+	struct tm fw_tm;
+	u8 hc_caplength;
+	u32 usbsts, count = 0xff;
+	struct xhci_cap_regs __iomem *cap_regs;
+	struct xhci_op_regs __iomem *op_regs;
+
+	/* enable mbox interrupt */
+	writel(readl(tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD) | MBOX_INT_EN,
+		tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
+
+	/* First thing, reset the ARU. By the time we get to
+	 * loading boot code below, reset would be complete.
+	 * alternatively we can busy wait on rst pending bit.
+	 */
+	/* Don't reset during ELPG/LP0 exit path */
+	if (resetARU) {
+		iowrite32(0x1, tegra->fpci_base + XUSB_CFG_ARU_RST);
+		usleep_range(1000, 2000);
+	}
+
+	if (csb_read(tegra, XUSB_CSB_MP_ILOAD_BASE_LO) != 0) {
+		dev_info(&pdev->dev, "Firmware already loaded, Falcon state 0x%x\n",
+				csb_read(tegra, XUSB_FALC_CPUCTL));
+		return 0;
+	}
+
+	phys_addr_lo = tegra->firmware.dma;
+	phys_addr_lo += sizeof(struct cfgtbl);
+
+	/* Program the size of DFI into ILOAD_ATTR */
+	csb_write(tegra, XUSB_CSB_MP_ILOAD_ATTR, tegra->firmware.size);
+
+	/* Boot code of the firmware reads the ILOAD_BASE_LO register
+	 * to get to the start of the dfi in system memory.
+	 */
+	csb_write(tegra, XUSB_CSB_MP_ILOAD_BASE_LO, phys_addr_lo);
+
+	/* Program the ILOAD_BASE_HI with a value of MSB 32 bits */
+	csb_write(tegra, XUSB_CSB_MP_ILOAD_BASE_HI, 0);
+
+	/* Set BOOTPATH to 1 in APMAP Register. Bit 31 is APMAP_BOOTMAP */
+	csb_write(tegra, XUSB_CSB_MP_APMAP, APMAP_BOOTPATH);
+
+	/* Invalidate L2IMEM. */
+	csb_write(tegra, XUSB_CSB_MP_L2IMEMOP_TRIG, L2IMEM_INVALIDATE_ALL);
+
+	/* Initiate fetch of Bootcode from system memory into L2IMEM.
+	 * Program BootCode location and size in system memory.
+	 */
+	HwReg = ((cfg_tbl->boot_codetag / IMEM_BLOCK_SIZE) &
+			L2IMEMOP_SIZE_SRC_OFFSET_MASK)
+			<< L2IMEMOP_SIZE_SRC_OFFSET_SHIFT;
+	HwReg |= ((cfg_tbl->boot_codesize / IMEM_BLOCK_SIZE) &
+			L2IMEMOP_SIZE_SRC_COUNT_MASK)
+			<< L2IMEMOP_SIZE_SRC_COUNT_SHIFT;
+	csb_write(tegra, XUSB_CSB_MP_L2IMEMOP_SIZE, HwReg);
+
+	/* Trigger L2IMEM Load operation. */
+	csb_write(tegra, XUSB_CSB_MP_L2IMEMOP_TRIG, L2IMEM_LOAD_LOCKED_RESULT);
+
+	/* Setup Falcon Auto-fill */
+	nblocks = (cfg_tbl->boot_codesize / IMEM_BLOCK_SIZE);
+	if ((cfg_tbl->boot_codesize % IMEM_BLOCK_SIZE) != 0)
+		nblocks += 1;
+	csb_write(tegra, XUSB_FALC_IMFILLCTL, nblocks);
+
+	HwReg = (cfg_tbl->boot_codetag / IMEM_BLOCK_SIZE) & IMFILLRNG_TAG_MASK;
+	HwReg |= (((cfg_tbl->boot_codetag + cfg_tbl->boot_codesize)
+			/IMEM_BLOCK_SIZE) - 1) << IMFILLRNG1_TAG_HI_SHIFT;
+	csb_write(tegra, XUSB_FALC_IMFILLRNG1, HwReg);
+
+	csb_write(tegra, XUSB_FALC_DMACTL, 0);
+	msleep(50);
+
+	csb_write(tegra, XUSB_FALC_BOOTVEC, cfg_tbl->boot_codetag);
+
+	/* Start Falcon CPU */
+	csb_write(tegra, XUSB_FALC_CPUCTL, CPUCTL_STARTCPU);
+	usleep_range(1000, 2000);
+
+	fw_time = cfg_tbl->fwimg_created_time;
+	time_to_tm(fw_time, 0, &fw_tm);
+	dev_info(&pdev->dev,
+		"Firmware timestamp: %ld-%02d-%02d %02d:%02d:%02d UTC, "\
+		"Falcon state 0x%x\n", fw_tm.tm_year + 1900,
+		fw_tm.tm_mon + 1, fw_tm.tm_mday, fw_tm.tm_hour,
+		fw_tm.tm_min, fw_tm.tm_sec,
+		csb_read(tegra, XUSB_FALC_CPUCTL));
+
+	/* return fail if firmware status is not good */
+	if (csb_read(tegra, XUSB_FALC_CPUCTL) == XUSB_FALC_STATE_HALTED)
+		return -EFAULT;
+
+	cap_regs = IO_ADDRESS(tegra->host_phy_base);
+	hc_caplength = HC_LENGTH(ioread32(&cap_regs->hc_capbase));
+	op_regs = IO_ADDRESS(tegra->host_phy_base + hc_caplength);
+
+	/* wait for USBSTS_CNR to get set */
 	do {
-		cnr = readl(IO_ADDRESS(tegra->host_phy_base + 0x24));
-	} while ((cnr & 0x800) && count--);
+		usbsts = ioread32(&op_regs->status);
+	} while ((usbsts & STS_CNR) && count--);
 
-	if (!count && !(cnr & 0x800))
-		dev_err(&pdev->dev, "CNR not set. Nothing would work now\n");
-
+	if (!count && (usbsts & STS_CNR)) {
+		dev_err(&pdev->dev, "Controller not ready\n");
+		return -EFAULT;
+	}
 	return 0;
 }
 
+static void tegra_xhci_release_port_ownership(struct tegra_xhci_hcd *tegra,
+	bool release)
+{
+	u32 reg;
+
+	reg = readl(tegra->padctl_base + USB2_PAD_MUX_0);
+	reg &= ~(USB2_OTG_PAD_PORT_MASK(0) | USB2_OTG_PAD_PORT_MASK(1));
+
+	if (!release) {
+		if (tegra->bdata->portmap & TEGRA_XUSB_USB2_P0)
+			reg |= USB2_OTG_PAD_PORT_OWNER_XUSB(0);
+		if (tegra->bdata->portmap & TEGRA_XUSB_USB2_P1)
+			reg |= USB2_OTG_PAD_PORT_OWNER_XUSB(1);
+	}
+
+	writel(reg, tegra->padctl_base + USB2_PAD_MUX_0);
+}
 /* SS ELPG Entry initiated by fw */
 static int tegra_xhci_ss_elpg_entry(struct tegra_xhci_hcd *tegra)
 {
@@ -1894,8 +1594,8 @@ static int tegra_xhci_ss_elpg_entry(struct tegra_xhci_hcd *tegra)
 	/* STEP 4: System Power Management driver asserts reset
 	 * to XUSB SuperSpeed partition then disables its clocks
 	 */
-	tegra_periph_reset_assert(tegra->ss_partition_clk);
-	clk_disable(tegra->ss_partition_clk);
+	tegra_periph_reset_assert(tegra->ss_clk);
+	clk_disable(tegra->ss_clk);
 
 	usleep_range(100, 200);
 
@@ -1927,7 +1627,6 @@ static int tegra_xhci_host_elpg_entry(struct tegra_xhci_hcd *tegra)
 {
 	struct xhci_hcd *xhci = tegra->xhci;
 	u32 ret;
-	u32 portsc;
 
 	must_have_sync_lock(tegra);
 
@@ -1949,18 +1648,23 @@ static int tegra_xhci_host_elpg_entry(struct tegra_xhci_hcd *tegra)
 	/* STEP 1.1: Do a context save of XUSB and IPFS registers */
 	tegra_xhci_save_xusb_ctx(tegra);
 
-	tegra_xhci_pmc_usb2_wakenotif_init(tegra, PMC_PORT_UTMIP_P2, &portsc);
+	pmc_init(tegra);
+	pmc_data.pmc_ops->setup_pmc_wake_detect(&pmc_data);
+
 	tegra_xhci_hs_wake_on_interrupts(tegra, true);
 	xhci_dbg(xhci, "%s: PMC_UTMIP_UHSIC_SLEEP_CFG_0 = %x\n", __func__,
 		readl(tegra->pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0));
 
 	/* STEP 4: Assert reset to host clk and disable host clk */
-	tegra_periph_reset_assert(tegra->host_partition_clk);
+	tegra_periph_reset_assert(tegra->host_clk);
 
-	clk_disable(tegra->host_partition_clk);
+	clk_disable(tegra->host_clk);
 
 	/* wait 150us */
 	usleep_range(150, 200);
+
+	/* flush MC client of XUSB_HOST */
+	tegra_powergate_mc_flush(TEGRA_POWERGATE_XUSBC);
 
 	/* STEP 4: Powergate host partition */
 	/* tegra_powergate_partition also does partition reset assert */
@@ -1973,7 +1677,11 @@ static int tegra_xhci_host_elpg_entry(struct tegra_xhci_hcd *tegra)
 	}
 	tegra->host_pwr_gated = true;
 
-	tegra_xhci_pmc_usb2_wakenotif_on(tegra, PMC_PORT_UTMIP_P2, portsc);
+	clk_disable(tegra->pll_re_vco_clk);
+	clk_disable(tegra->emc_clk);
+	/* set port ownership to SNPS */
+	tegra_xhci_release_port_ownership(tegra, true);
+
 	xhci_dbg(xhci, "%s: PMC_UTMIP_UHSIC_SLEEP_CFG_0 = %x\n", __func__,
 		readl(tegra->pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0));
 
@@ -2024,7 +1732,7 @@ static int tegra_xhci_ss_partition_elpg_exit(struct tegra_xhci_hcd *tegra)
 	}
 
 	/* Step 3: Enable clock to ss partition */
-	clk_enable(tegra->ss_partition_clk);
+	clk_enable(tegra->ss_clk);
 
 	/* Step 4: Disable ss wake detection logic */
 	tegra_xhci_ss_wake_on_interrupts(tegra, false);
@@ -2039,7 +1747,7 @@ static int tegra_xhci_ss_partition_elpg_exit(struct tegra_xhci_hcd *tegra)
 	tegra_xhci_ss_wake_signal(tegra, false);
 
 	/* Step 6 Deassert reset for ss clks */
-	tegra_periph_reset_deassert(tegra->ss_partition_clk);
+	tegra_periph_reset_deassert(tegra->ss_clk);
 
 	xhci_dbg(xhci, "%s: SS ELPG EXIT. ALL DONE\n", __func__);
 	tegra->ss_pwr_gated = false;
@@ -2055,6 +1763,139 @@ static void ss_partition_elpg_exit_work(struct work_struct *work)
 	mutex_lock(&tegra->sync_lock);
 	tegra_xhci_ss_partition_elpg_exit(tegra);
 	mutex_unlock(&tegra->sync_lock);
+}
+
+/* read pmc WAKE2_STATUS register to know if SS port caused remote wake */
+static void update_remote_wakeup_ports_pmc(struct tegra_xhci_hcd *tegra)
+{
+	struct xhci_hcd *xhci = tegra->xhci;
+	u32 wake2_status;
+
+#define PMC_WAKE2_STATUS	0x168
+#define PADCTL_WAKE		(1 << (58 - 32)) /* PADCTL is WAKE#58 */
+
+	wake2_status = ioread32(tegra->pmc_base + PMC_WAKE2_STATUS);
+
+	if (wake2_status & PADCTL_WAKE) {
+		/* FIXME: This is customized for Dalmore, find a generic way */
+		set_bit(0, &tegra->usb3_rh_remote_wakeup_ports);
+		/* clear wake status */
+		iowrite32(PADCTL_WAKE, tegra->pmc_base + PMC_WAKE2_STATUS);
+	}
+
+	xhci_dbg(xhci, "%s: usb3 roothub remote_wakeup_ports 0x%lx\n",
+			__func__, tegra->usb3_rh_remote_wakeup_ports);
+}
+
+static void wait_remote_wakeup_ports(struct usb_hcd *hcd)
+{
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+	struct tegra_xhci_hcd *tegra = hcd_to_tegra_xhci(hcd);
+	int port, num_ports;
+	unsigned long *remote_wakeup_ports;
+	u32 portsc;
+	__le32 __iomem	**port_array;
+	unsigned char *rh;
+	unsigned int retry = 64;
+
+
+	if (hcd == xhci->shared_hcd) {
+		port_array = xhci->usb3_ports;
+		num_ports = xhci->num_usb3_ports;
+		remote_wakeup_ports = &tegra->usb3_rh_remote_wakeup_ports;
+		rh = "usb3 roothub";
+	} else
+		return;
+
+	while (*remote_wakeup_ports && retry--) {
+		for_each_set_bit(port, remote_wakeup_ports, num_ports) {
+			portsc = xhci_readl(xhci, port_array[port]);
+
+			if (!(portsc & PORT_CONNECT)) {
+				/* nothing to do if already disconnected */
+				clear_bit(port, remote_wakeup_ports);
+				continue;
+			}
+
+			if ((portsc & PORT_PLS_MASK) == XDEV_U0)
+				clear_bit(port, remote_wakeup_ports);
+			else
+				xhci_dbg(xhci, "%s: %s port %d status 0x%x\n",
+						__func__, rh, port, portsc);
+		}
+
+		if (*remote_wakeup_ports)
+			msleep(20); /* give some time, irq will direct U0 */
+	}
+
+	xhci_dbg(xhci, "%s: %s remote_wakeup_ports 0x%lx\n", __func__, rh,
+			*remote_wakeup_ports);
+}
+
+static void tegra_xhci_war_for_tctrl_rctrl(struct tegra_xhci_hcd *tegra)
+{
+	u32 reg, utmip_rctrl_val, utmip_tctrl_val;
+
+	/* Program XUSB as port owner for both Port 0 and port 1 */
+	reg = readl(tegra->padctl_base + USB2_PAD_MUX_0);
+	reg &= ~(USB2_OTG_PAD_PORT_MASK(0) | USB2_OTG_PAD_PORT_MASK(1));
+	reg |= USB2_OTG_PAD_PORT_OWNER_XUSB(0) |
+		USB2_OTG_PAD_PORT_OWNER_XUSB(1);
+	writel(reg, tegra->padctl_base + USB2_PAD_MUX_0);
+
+	/* XUSB_PADCTL_USB2_BIAS_PAD_CTL_0_0::PD = 0 and
+	 * XUSB_PADCTL_USB2_BIAS_PAD_CTL_0_0::PD_TRK = 0
+	 */
+	reg = readl(tegra->padctl_base + USB2_BIAS_PAD_CTL_0_0);
+	reg &= ~((1 << 12) | (1 << 13));
+	writel(reg, tegra->padctl_base + USB2_BIAS_PAD_CTL_0_0);
+
+	/* wait 20us */
+	usleep_range(20, 30);
+
+	/* Read XUSB_PADCTL:: XUSB_PADCTL_USB2_BIAS_PAD_CTL_1_0
+	 * :: TCTRL and RCTRL
+	 */
+	reg = readl(tegra->padctl_base + USB2_BIAS_PAD_CTL_1_0);
+	utmip_rctrl_val = RCTRL(reg);
+	utmip_tctrl_val = TCTRL(reg);
+
+	/*
+	 * tctrl_val = 0x1f - (16 - ffz(utmip_tctrl_val)
+	 * rctrl_val = 0x1f - (16 - ffz(utmip_rctrl_val)
+	 */
+	pmc_data.utmip_rctrl_val = 0xf + ffz(utmip_rctrl_val);
+	pmc_data.utmip_tctrl_val = 0xf + ffz(utmip_tctrl_val);
+
+	xhci_dbg(tegra->xhci, "rctrl_val = 0x%x, tctrl_val = 0x%x\n",
+		pmc_data.utmip_rctrl_val, pmc_data.utmip_tctrl_val);
+
+	/* XUSB_PADCTL_USB2_BIAS_PAD_CTL_0_0::PD = 1 and
+	 * XUSB_PADCTL_USB2_BIAS_PAD_CTL_0_0::PD_TRK = 1
+	 */
+	reg = readl(tegra->padctl_base + USB2_BIAS_PAD_CTL_0_0);
+	reg |= (1 << 13);
+	writel(reg, tegra->padctl_base + USB2_BIAS_PAD_CTL_0_0);
+
+	/* Program these values into PMC regiseter and program the
+	 * PMC override
+	 */
+	reg = PMC_TCTRL_VAL(pmc_data.utmip_tctrl_val) |
+		PMC_RCTRL_VAL(pmc_data.utmip_rctrl_val);
+	writel(reg, tegra->pmc_base + PMC_UTMIP_TERM_PAD_CFG);
+
+	reg = readl(tegra->pmc_base + PMC_SLEEP_CFG);
+	reg |= UTMIP_RCTRL_USE_PMC_P2 | UTMIP_TCTRL_USE_PMC_P2;
+	writel(reg, tegra->pmc_base + PMC_SLEEP_CFG);
+
+	/* Restore correct port ownership in padctl */
+	reg = readl(tegra->padctl_base + USB2_PAD_MUX_0);
+	reg &= ~(USB2_OTG_PAD_PORT_MASK(0) | USB2_OTG_PAD_PORT_MASK(1));
+	if (tegra->bdata->portmap & TEGRA_XUSB_USB2_P0)
+		reg |= USB2_OTG_PAD_PORT_OWNER_XUSB(0);
+	if (tegra->bdata->portmap & TEGRA_XUSB_USB2_P1)
+		reg |= USB2_OTG_PAD_PORT_OWNER_XUSB(1);
+	writel(reg, tegra->padctl_base + USB2_PAD_MUX_0);
 }
 
 /* Host ELPG Exit triggered by PADCTL irq */
@@ -2077,12 +1918,15 @@ tegra_xhci_host_partition_elpg_exit(struct tegra_xhci_hcd *tegra)
 	if (!tegra->hc_in_elpg)
 		return 0;
 
+	clk_enable(tegra->emc_clk);
+	clk_enable(tegra->pll_re_vco_clk);
 	/* Step 2: Enable clock to host partition */
-	clk_enable(tegra->host_partition_clk);
+	clk_enable(tegra->host_clk);
 
 	if (tegra->lp0_exit) {
 		u32 reg;
 
+		tegra_xhci_war_for_tctrl_rctrl(tegra);
 		/* check if over current seen. Clear if present */
 		reg = readl(tegra->padctl_base + OC_DET_0);
 		xhci_dbg(xhci, "%s: OC_DET_0=0x%x\n", __func__, reg);
@@ -2097,13 +1941,15 @@ tegra_xhci_host_partition_elpg_exit(struct tegra_xhci_hcd *tegra)
 				xhci_info(xhci, "Over current still present\n");
 		}
 		tegra_xhci_padctl_portmap_and_caps(tegra);
-	}
-
-	/* release clamps post deassert */
-	if (tegra->lp0_exit) {
-		tegra_xhci_padctl_enable_usb_vbus(tegra);
+		/* release clamps post deassert */
 		tegra->lp0_exit = false;
 	}
+
+	/* Clear FLUSH_ENABLE of MC client */
+	tegra_powergate_mc_flush_done(TEGRA_POWERGATE_XUSBC);
+
+	/* set port ownership back to xusb */
+	tegra_xhci_release_port_ownership(tegra, false);
 
 	/*
 	 * PWR_UNGATE Host partition. XUSBC
@@ -2117,7 +1963,7 @@ tegra_xhci_host_partition_elpg_exit(struct tegra_xhci_hcd *tegra)
 	}
 
 	/* Step 4: Deassert reset to host partition clk */
-	tegra_periph_reset_deassert(tegra->host_partition_clk);
+	tegra_periph_reset_deassert(tegra->host_clk);
 
 	/* Step 6.1: IPFS and XUSB BAR initialization */
 	tegra_xhci_cfg(tegra);
@@ -2130,6 +1976,15 @@ tegra_xhci_host_partition_elpg_exit(struct tegra_xhci_hcd *tegra)
 	 */
 
 	tegra_xhci_ss_partition_elpg_exit(tegra);
+
+	/* Change SS clock source to HSIC_480 and set ss_src_clk at 120MHz */
+	if (clk_get_rate(tegra->ss_src_clk) == 12000000) {
+		clk_set_rate(tegra->ss_src_clk,  3000 * 1000);
+		clk_set_parent(tegra->ss_src_clk, tegra->pll_u_480M);
+	}
+
+	/* clear ovrd bits */
+	tegra_xhci_rx_idle_mode_override(tegra, false);
 
 	/* Load firmware */
 	xhci_dbg(xhci, "%s: elpg_exit: loading firmware from pmc.\n"
@@ -2148,12 +2003,15 @@ tegra_xhci_host_partition_elpg_exit(struct tegra_xhci_hcd *tegra)
 			csb_read(tegra, XUSB_FALC_FS_PVTPORTSC3));
 	debug_print_portsc(xhci);
 
-	ret = tegra_xhci_load_fw_from_pmc(tegra, 0);
+	ret = load_firmware(tegra, false /* EPLG exit, do not reset ARU */);
 	if (ret < 0) {
-		xhci_err(xhci, "%s: error loading fw from RAM %d\n",
+		xhci_err(xhci, "%s: failed to load firmware %d\n",
 			__func__, ret);
 		goto out;
 	}
+
+	pmc_init(tegra);
+	pmc_data.pmc_ops->disable_pmc_bus_ctrl(&pmc_data);
 
 	tegra->hc_in_elpg = false;
 	ret = xhci_resume(tegra->xhci, 0);
@@ -2163,7 +2021,7 @@ tegra_xhci_host_partition_elpg_exit(struct tegra_xhci_hcd *tegra)
 		goto out;
 	}
 
-	tegra_xhci_pmc_usb2_wakenotif_off(tegra, PMC_PORT_UTMIP_P2);
+	update_remote_wakeup_ports_pmc(tegra);
 
 	if (tegra->hs_wake_event)
 		tegra->hs_wake_event = false;
@@ -2204,11 +2062,12 @@ static void host_partition_elpg_exit_work(struct work_struct *work)
 static void
 tegra_xhci_process_mbox_message(struct work_struct *work)
 {
-	u32 sw_resp = 0;
-	int ret = 0, fw_msg, data_in;
+	u32 sw_resp = 0, cmd, data_in, fw_msg;
+	int ret = 0;
 	struct tegra_xhci_hcd *tegra = container_of(work, struct tegra_xhci_hcd,
 					mbox_work);
 	struct xhci_hcd *xhci = tegra->xhci;
+	unsigned int freq_khz;
 
 	mutex_lock(&tegra->mbox_lock);
 
@@ -2249,7 +2108,7 @@ tegra_xhci_process_mbox_message(struct work_struct *work)
 	case MBOX_CMD_DEC_SSPI_CLOCK:
 		ret = tegra_xusb_request_clk_rate(
 				tegra,
-				tegra->ss_clk,
+				tegra->ss_src_clk,
 				tegra->cmd_data,
 				&sw_resp);
 		if (ret)
@@ -2257,17 +2116,22 @@ tegra_xhci_process_mbox_message(struct work_struct *work)
 				__func__);
 		goto send_sw_response;
 	case MBOX_CMD_SET_BW:
-		/* make sure mem bandwidth
-		 * is requested in MB/s
-		 */
-		ret = tegra_xusb_request_clk_rate(
-				tegra,
-				tegra->emc_clk,
-				tegra->cmd_data,
-				&sw_resp);
-		if (ret)
-			xhci_err(xhci, "%s: could not set required mem bw.\n",
-				__func__);
+		/* fw sends BW request in MByte/sec */
+		freq_khz = tegra_emc_bw_to_freq_req(tegra->cmd_data << 10);
+		clk_set_rate(tegra->emc_clk, freq_khz * 1000);
+
+		/* clear MBOX_SMI_INT_EN bit */
+		cmd = readl(tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
+		cmd &= ~MBOX_SMI_INT_EN;
+		writel(cmd, tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
+
+		/* clear mbox owner as ACK will not be sent for this request */
+		writel(0, tegra->fpci_base + XUSB_CFG_ARU_MBOX_OWNER);
+		break;
+	case MBOX_CMD_SAVE_DFE_CTLE_CTX:
+		tegra_xhci_save_dfe_ctle_context(tegra, tegra->cmd_data);
+		tegra_xhci_restore_dfe_ctle_context(tegra, tegra->cmd_data);
+		sw_resp |= (MBOX_CMD_ACK << MBOX_CMD_SHIFT);
 		goto send_sw_response;
 	case MBOX_CMD_ACK:
 		writel(0, tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
@@ -2285,15 +2149,12 @@ tegra_xhci_process_mbox_message(struct work_struct *work)
 	return;
 
 send_sw_response:
-	writel(sw_resp,
-		 tegra->fpci_base + XUSB_CFG_ARU_MBOX_DATA_IN);
-
-
-	writel(MBOX_INT_EN|MBOX_FALC_INT_EN,
-			tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
+	writel(sw_resp, tegra->fpci_base + XUSB_CFG_ARU_MBOX_DATA_IN);
+	cmd = readl(tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
+	cmd |= MBOX_INT_EN | MBOX_FALC_INT_EN;
+	writel(cmd, tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
 
 	mutex_unlock(&tegra->mbox_lock);
-	usleep_range(100, 200);
 }
 
 static irqreturn_t tegra_xhci_xusb_host_irq(int irq, void *ptrdev)
@@ -2318,6 +2179,10 @@ static irqreturn_t tegra_xhci_padctl_irq(int irq, void *ptrdev)
 	/* Check the intr cause. Could be  USB2 or HSIC or SS wake events */
 	elpg_program0 = readl(tegra->padctl_base + ELPG_PROGRAM_0);
 
+	/* Clear the interrupt cause. We already read the intr status. */
+	tegra_xhci_ss_wake_on_interrupts(tegra, false);
+	tegra_xhci_hs_wake_on_interrupts(tegra, false);
+
 	xhci_dbg(xhci, "%s: elpg_program0 = %x\n",
 		__func__, elpg_program0);
 	xhci_dbg(xhci, "%s: PMC REGISTER = %x\n",
@@ -2336,53 +2201,22 @@ static irqreturn_t tegra_xhci_padctl_irq(int irq, void *ptrdev)
 		__func__,
 		readl(tegra->padctl_base + USB2_BATTERY_CHRG_BIASPAD_0));
 
-	if (elpg_program0 & SS_PORT0_WAKEUP_EVENT) {
-		elpg_program0 &= ~SS_PORT0_WAKE_INTERRUPT_ENABLE;
-		writel(elpg_program0 | SS_PORT0_WAKEUP_EVENT,
-				tegra->padctl_base + ELPG_PROGRAM_0);
+	if (elpg_program0 & (SS_PORT0_WAKEUP_EVENT | SS_PORT1_WAKEUP_EVENT))
 		tegra->ss_wake_event = true;
-
-	} else if (elpg_program0 & SS_PORT1_WAKEUP_EVENT) {
-		elpg_program0 &= ~SS_PORT1_WAKE_INTERRUPT_ENABLE;
-		writel(elpg_program0 | SS_PORT1_WAKEUP_EVENT,
-				tegra->padctl_base + ELPG_PROGRAM_0);
-		tegra->ss_wake_event = true;
-
-	} else if (elpg_program0 &  USB2_PORT0_WAKEUP_EVENT) {
-		elpg_program0 &= ~USB2_PORT0_WAKE_INTERRUPT_ENABLE;
-		writel(elpg_program0 | USB2_PORT0_WAKEUP_EVENT,
-				tegra->padctl_base + ELPG_PROGRAM_0);
+	else if (elpg_program0 &
+			(USB2_PORT0_WAKEUP_EVENT | USB2_PORT1_WAKEUP_EVENT))
 		tegra->hs_wake_event = true;
 
-	} else if (elpg_program0 & USB2_PORT1_WAKEUP_EVENT) {
-		elpg_program0 &= ~USB2_PORT1_WAKE_INTERRUPT_ENABLE;
-		writel(elpg_program0 | USB2_PORT1_WAKEUP_EVENT,
-				tegra->padctl_base + ELPG_PROGRAM_0);
-		tegra->hs_wake_event = true;
-
-	} else if (elpg_program0 & USB2_HSIC_PORT0_WAKEUP_EVENT) {
-		writel(elpg_program0 | USB2_HSIC_PORT0_WAKEUP_EVENT,
-				tegra->padctl_base + ELPG_PROGRAM_0);
-
-	} else if (elpg_program0 & USB2_HSIC_PORT1_WAKEUP_EVENT) {
-		writel(elpg_program0 | USB2_HSIC_PORT1_WAKEUP_EVENT,
-				tegra->padctl_base + ELPG_PROGRAM_0);
-	}
-	if (tegra->ss_wake_event) {
+	if (tegra->ss_wake_event || tegra->hs_wake_event) {
 		if (tegra->ss_pwr_gated && !tegra->host_pwr_gated) {
-			xhci_dbg(xhci, "[%s] schedule ss_elpg_exit_work\n",
-				__func__);
-			schedule_work(&tegra->ss_elpg_exit_work);
+			xhci_err(xhci, "SS gated Host ungated. Should not happen\n");
+			WARN_ON(tegra->ss_pwr_gated && tegra->host_pwr_gated);
 		} else if (tegra->ss_pwr_gated
 				&& tegra->host_pwr_gated) {
 			xhci_dbg(xhci, "[%s] schedule host_elpg_exit_work\n",
 				__func__);
 			schedule_work(&tegra->host_elpg_exit_work);
 		}
-	} else if (tegra->hs_wake_event) {
-		xhci_dbg(xhci, "[%s] schedule host_elpg_exit_work\n",
-			__func__);
-		schedule_work(&tegra->host_elpg_exit_work);
 	} else {
 		xhci_err(xhci, "error: wake due to no hs/ss event\n");
 		writel(0xffffffff, tegra->padctl_base + ELPG_PROGRAM_0);
@@ -2533,7 +2367,27 @@ static int tegra_xhci_bus_suspend(struct usb_hcd *hcd)
 		goto tegra_xhci_host_elpg_entry_failed;
 	}
 
+	/* At this point,ensure ss/hs intr enables are always on */
+	tegra_xhci_ss_wake_on_interrupts(tegra, true);
+	tegra_xhci_hs_wake_on_interrupts(tegra, true);
+
 done:
+	/* pads are disabled only if usb2 root hub in xusb is idle */
+	/* pads will actually be disabled only when all usb2 ports are idle */
+	if (xhci->main_hcd == hcd) {
+		utmi_phy_pad_disable();
+		utmi_phy_iddq_override(true);
+		/* port ownership to SNPS when no HS connected to save power */
+		if (!is_any_hs_connected(xhci))
+			tegra_xhci_release_port_ownership(tegra, true);
+	} else if (xhci->shared_hcd == hcd) {
+		/* save leakage power when SS not in use.
+		 * This is also done when fw mbox message is received for freq
+		 * decrease but on T114 we don't change freq due to sw WAR
+		 * used for hs disconnect issue.
+		 */
+		tegra_xhci_rx_idle_mode_override(tegra, true);
+	}
 	mutex_unlock(&tegra->sync_lock);
 	return 0;
 
@@ -2567,10 +2421,23 @@ static int tegra_xhci_bus_resume(struct usb_hcd *hcd)
 	else if (xhci->main_hcd == hcd)
 		xhci_dbg(xhci, "%s: usb2 root hub\n", __func__);
 
+	/* pads are disabled only if usb2 root hub in xusb is idle */
+	/* pads will actually be disabled only when all usb2 ports are idle */
+	if (xhci->main_hcd == hcd && tegra->usb2_rh_suspend) {
+		utmi_phy_pad_enable();
+		utmi_phy_iddq_override(false);
+		tegra_xhci_release_port_ownership(tegra, false);
+	} else if (xhci->shared_hcd == hcd && tegra->usb3_rh_suspend) {
+		/* clear ovrd bits */
+		tegra_xhci_rx_idle_mode_override(tegra, false);
+	}
 	if (tegra->usb2_rh_suspend && tegra->usb3_rh_suspend) {
 		if (tegra->ss_pwr_gated && tegra->host_pwr_gated)
 			tegra_xhci_host_partition_elpg_exit(tegra);
 	}
+
+	 /* handle remote wakeup before resuming bus */
+	wait_remote_wakeup_ports(hcd);
 
 	err = xhci_bus_resume(hcd);
 	if (err) {
@@ -2710,7 +2577,9 @@ tegra_xhci_suspend(struct platform_device *pdev,
 		"%s: Couldn't enable USB host mode wakeup, irq=%d, error=%d\n",
 		__func__, tegra->usb3_irq, ret);
 	}
-	clk_disable(tegra->plle_clk);
+	regulator_disable(tegra->xusb_avdd_usb3_pll_reg);
+	regulator_disable(tegra->xusb_avddio_usb3_reg);
+	tegra_usb2_clocks_deinit(tegra);
 
 	return ret;
 }
@@ -2728,16 +2597,104 @@ tegra_xhci_resume(struct platform_device *pdev)
 	disable_irq_wake(tegra->usb3_irq);
 	tegra->lp0_exit = true;
 
-	regulator_enable(tegra->xusb_vbus_reg);
 	regulator_enable(tegra->xusb_avddio_usb3_reg);
-	regulator_enable(tegra->xusb_vddio_hsic_reg);
-	regulator_enable(tegra->xusb_hvdd_usb3_reg);
 	regulator_enable(tegra->xusb_avdd_usb3_pll_reg);
 	tegra_usb2_clocks_init(tegra);
 
 	return 0;
 }
 #endif
+
+
+static int init_bootloader_firmware(struct tegra_xhci_hcd *tegra)
+{
+	struct platform_device *pdev = tegra->pdev;
+	void __iomem *fw_mmio_base;
+	phys_addr_t fw_mem_phy_addr;
+	size_t fw_size;
+	dma_addr_t fw_dma;
+#ifdef CONFIG_PLATFORM_ENABLE_IOMMU
+	int ret;
+#endif
+
+	/* bootloader saved firmware memory address in PMC SCRATCH34 register */
+	fw_mem_phy_addr = ioread32(tegra->pmc_base + PMC_SCRATCH34);
+
+	fw_mmio_base = devm_ioremap_nocache(&pdev->dev,
+			fw_mem_phy_addr, sizeof(struct cfgtbl));
+
+	if (!fw_mmio_base) {
+			dev_err(&pdev->dev, "error mapping fw memory 0x%x\n",
+					fw_mem_phy_addr);
+			return -ENOMEM;
+	}
+
+	fw_size = ioread32(fw_mmio_base + FW_SIZE_OFFSET);
+	devm_iounmap(&pdev->dev, fw_mmio_base);
+
+	fw_mmio_base = devm_ioremap_nocache(&pdev->dev,
+			fw_mem_phy_addr, fw_size);
+	if (!fw_mmio_base) {
+			dev_err(&pdev->dev, "error mapping fw memory 0x%x\n",
+					fw_mem_phy_addr);
+			return -ENOMEM;
+	}
+
+	dev_info(&pdev->dev, "Firmware Memory: phy 0x%x mapped 0x%p (%d Bytes)\n",
+			fw_mem_phy_addr, fw_mmio_base, fw_size);
+
+#ifdef CONFIG_PLATFORM_ENABLE_IOMMU
+	fw_dma = dma_map_linear(&pdev->dev, fw_mem_phy_addr, fw_size,
+			DMA_TO_DEVICE);
+	if (fw_dma == DMA_ERROR_CODE) {
+		dev_err(&pdev->dev, "%s: dma_map_linear failed\n",
+				__func__);
+		ret = -ENOMEM;
+		goto error_iounmap;
+	}
+#else
+	fw_dma = fw_mem_phy_addr;
+#endif
+	dev_info(&pdev->dev, "Firmware DMA Memory: dma 0x%p (%d Bytes)\n",
+			(void *) fw_dma, fw_size);
+
+	/* all set and ready to go */
+	tegra->firmware.data = fw_mmio_base;
+	tegra->firmware.dma = fw_dma;
+	tegra->firmware.size = fw_size;
+
+	return 0;
+
+#ifdef CONFIG_PLATFORM_ENABLE_IOMMU
+error_iounmap:
+	devm_iounmap(&pdev->dev, fw_mmio_base);
+	return ret;
+#endif
+}
+
+static void deinit_bootloader_firmware(struct tegra_xhci_hcd *tegra)
+{
+	struct platform_device *pdev = tegra->pdev;
+	void __iomem *fw_mmio_base = tegra->firmware.data;
+
+#ifdef CONFIG_PLATFORM_ENABLE_IOMMU
+	dma_unmap_single(&pdev->dev, tegra->firmware.dma,
+			tegra->firmware.size, DMA_TO_DEVICE);
+#endif
+	devm_iounmap(&pdev->dev, fw_mmio_base);
+
+	memset(&tegra->firmware, 0, sizeof(tegra->firmware));
+}
+
+static int init_firmware(struct tegra_xhci_hcd *tegra)
+{
+	return init_bootloader_firmware(tegra);
+}
+
+static void deinit_firmware(struct tegra_xhci_hcd *tegra)
+{
+	deinit_bootloader_firmware(tegra);
+}
 
 /* TODO: we have to refine error handling in tegra_xhci_probe() */
 static int tegra_xhci_probe(struct platform_device *pdev)
@@ -2750,6 +2707,8 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 	u32 pmc_reg;
 	int ret;
 	int irq;
+
+	BUILD_BUG_ON(sizeof(struct cfgtbl) != 256);
 
 	if (usb_disabled())
 		return -ENODEV;
@@ -2819,32 +2778,25 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 	if (ret)
 		dev_err(&pdev->dev, "could not unpowergate xusbc partition\n");
 
-	tegra->xusb_padctl = dev_get_platdata(&pdev->dev);
+	tegra->pdata = dev_get_platdata(&pdev->dev);
+	tegra->bdata = tegra->pdata->bdata;
 
 	/* reset the pointer back to NULL. driver uses it */
 	/* platform_set_drvdata(pdev, NULL); */
 
+	/* calculate rctrl_val and tctrl_val once at boot time */
+	tegra_xhci_war_for_tctrl_rctrl(tegra);
+
 	/* Program the XUSB pads to take ownership of ports */
 	tegra_xhci_padctl_portmap_and_caps(tegra);
-
-	/* Enable Vbus of host ports */
-	tegra_xhci_padctl_enable_usb_vbus(tegra);
 
 	/* Release XUSB wake logic state latching */
 	tegra_xhci_ss_wake_signal(tegra, false);
 	tegra_xhci_ss_vcore(tegra, false);
 
-	/* Disable clocks to get ref cnt to 0 */
-	clk_disable(tegra->host_partition_clk);
-	clk_disable(tegra->ss_partition_clk);
-
-	/* Enable host, ss, dev clocks */
-	clk_enable(tegra->host_partition_clk);
-	clk_enable(tegra->ss_partition_clk);
-
 	/* Deassert reset to XUSB host, ss, dev clocks */
-	tegra_periph_reset_deassert(tegra->host_partition_clk);
-	tegra_periph_reset_deassert(tegra->ss_partition_clk);
+	tegra_periph_reset_deassert(tegra->host_clk);
+	tegra_periph_reset_deassert(tegra->ss_clk);
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "host");
 	if (!res) {
@@ -2857,38 +2809,28 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 	/* Setup IPFS access and BAR0 space */
 	tegra_xhci_cfg(tegra);
 
-	/* Read fw base address from SCRATCH34 register  */
-	tegra->fw_phys_base = readl(tegra->pmc_base + PMC_SCRATCH34);
-
-	/* ioremap the fw physical base address */
-	tegra->fw_virt_base = (u32) devm_ioremap(&pdev->dev,
-				tegra->fw_phys_base, FW_SIZE_OFFSET);
-	if (!tegra->fw_virt_base) {
-		dev_err(&pdev->dev, "error mapping fw memory 0x%x\n",
-				tegra->fw_phys_base);
-		ret = -ENOMEM;
-		goto err_deinit_usb2_clocks;
-	}
-	dev_info(&pdev->dev, "fw_phys_base=0x%x, fw_virt_base=0x%x\n",
-				tegra->fw_phys_base, tegra->fw_virt_base);
-
-	/* Read fw size at offset 0x100 in CFG table */
-	tegra->fw_size = *((u32 *)((u8 *)tegra->fw_virt_base + FW_SIZE_OFFSET));
-
-	/* Load firmware */
-	ret = tegra_xhci_load_fw_from_pmc(tegra, 1);
+	ret = init_firmware(tegra);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "Error loading fw from RAM\n");
+		dev_err(&pdev->dev, "failed to init firmware\n");
+		ret = -ENODEV;
 		goto err_deinit_usb2_clocks;
 	}
 
+	ret = load_firmware(tegra, true /* do reset ARU */);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "failed to load firmware\n");
+		ret = -ENODEV;
+		goto err_deinit_firmware;
+	}
+
+	device_init_wakeup(&pdev->dev, 1);
 	driver = &tegra_plat_xhci_driver;
 
 	hcd = usb_create_hcd(driver, &pdev->dev, dev_name(&pdev->dev));
 	if (!hcd) {
 		dev_err(&pdev->dev, "failed to create usb2 hcd\n");
 		ret = -ENOMEM;
-		goto err_deinit_usb2_clocks;
+		goto err_deinit_firmware;
 	}
 
 	ret = tegra_xhci_request_mem_region(pdev, "host", &hcd->regs);
@@ -2938,6 +2880,8 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 		goto err_put_usb3_hcd;
 	}
 
+	device_init_wakeup(&hcd->self.root_hub->dev, 1);
+	device_init_wakeup(&xhci->shared_hcd->self.root_hub->dev, 1);
 	spin_lock_init(&tegra->lock);
 	mutex_init(&tegra->sync_lock);
 	mutex_init(&tegra->mbox_lock);
@@ -2945,6 +2889,8 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 	/* do mailbox related initializations */
 	tegra->mbox_owner = 0xffff;
 	INIT_WORK(&tegra->mbox_work, tegra_xhci_process_mbox_message);
+
+	tegra_xhci_enable_fw_message(tegra);
 
 	/* do ss partition elpg exit related initialization */
 	INIT_WORK(&tegra->ss_elpg_exit_work, ss_partition_elpg_exit_work);
@@ -2976,14 +2922,13 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 	if (ret != 0)
 		goto err_remove_usb3_hcd;
 
-	device_init_wakeup(&pdev->dev, 1);
-
 	tegra->ss_pwr_gated = false;
 	tegra->host_pwr_gated = false;
 	tegra->hc_in_elpg = false;
 	tegra->hs_wake_event = false;
 	tegra->host_resume_req = false;
 	tegra->lp0_exit = false;
+	tegra->dfe_ctle_ctx_saved = false;
 
 	/* reset wake event to NONE */
 	pmc_reg = readl(tegra->pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
@@ -2994,6 +2939,10 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 	writel(pmc_reg, tegra->pmc_base + PMC_UTMIP_UHSIC_SLEEP_CFG_0);
 
 	tegra_xhci_debug_read_pads(tegra);
+	utmi_phy_pad_enable();
+	utmi_phy_iddq_override(false);
+	pmc_init(tegra);
+	pmc_data.pmc_ops->powerup_pmc_wake_detect(&pmc_data);
 
 	return 0;
 
@@ -3006,6 +2955,8 @@ err_remove_usb2_hcd:
 	usb_remove_hcd(hcd);
 err_put_usb2_hcd:
 	usb_put_hcd(hcd);
+err_deinit_firmware:
+	deinit_firmware(tegra);
 err_deinit_usb2_clocks:
 	tegra_usb2_clocks_deinit(tegra);
 err_deinit_tegra_xusb_regulator:
@@ -3028,6 +2979,7 @@ static int tegra_xhci_remove(struct platform_device *pdev)
 	xhci = tegra->xhci;
 	hcd = xhci_to_hcd(xhci);
 
+	tegra_xhci_release_port_ownership(tegra, true);
 	devm_free_irq(&pdev->dev, tegra->usb3_irq, tegra);
 	devm_free_irq(&pdev->dev, tegra->padctl_irq, tegra);
 	devm_free_irq(&pdev->dev, tegra->smi_irq, tegra);
@@ -3037,9 +2989,13 @@ static int tegra_xhci_remove(struct platform_device *pdev)
 	usb_put_hcd(hcd);
 	kfree(xhci);
 
+	deinit_firmware(tegra);
 	tegra_xusb_regulator_deinit(tegra);
 	tegra_usb2_clocks_deinit(tegra);
-	tegra_xusb_partitions_clk_deinit(tegra);
+	if (!tegra->hc_in_elpg)
+		tegra_xusb_partitions_clk_deinit(tegra);
+	utmi_phy_pad_disable();
+	utmi_phy_iddq_override(true);
 
 	return 0;
 }
@@ -3053,6 +3009,11 @@ static void tegra_xhci_shutdown(struct platform_device *pdev)
 	if (tegra == NULL)
 		return;
 
+	if (tegra->hc_in_elpg) {
+		mutex_lock(&tegra->sync_lock);
+		tegra_xhci_host_partition_elpg_exit(tegra);
+		mutex_unlock(&tegra->sync_lock);
+	}
 	xhci = tegra->xhci;
 	hcd = xhci_to_hcd(xhci);
 	xhci_shutdown(hcd);

@@ -19,6 +19,53 @@
 #ifndef __XUSB_H
 #define __XUSB_H
 
+/* PADCTL BITS */
+#define USB2_OTG_PAD_PORT_MASK(x) (0x3 << (2 * x))
+#define USB2_OTG_PAD_PORT_OWNER_XUSB(x) (0x1 << (2 * x))
+#define USB2_PORT_CAP_MASK(x) (0x3 << (4 * x))
+#define USB2_PORT_CAP_HOST(x) (0x1 << (4 * x))
+#define USB2_ULPI_PAD	(0x1 << 12)
+#define USB2_ULPI_PAD_OWNER_XUSB	(0x1 << 12)
+#define USB2_HSIC_PAD_P0_OWNER_XUSB	(0x1 << 14)
+#define USB2_HSIC_PAD_P1_OWNER_XUSB	(0x1 << 15)
+#define USB2_ULPI_PORT_CAP	(0x1 << 24)
+#define SS_PORT_MAP_P0	(0x7 << 0)
+#define SS_PORT_MAP_P1	(0x7 << 4)
+#define SS_PORT_MAP_P0_USB2_PORT0	(0x0 << 0)
+#define SS_PORT_MAP_P0_USB2_PORT1	(0x1 << 0)
+#define USB2_OTG_HS_CURR_LVL (0x3F << 0)
+#define USB2_OTG_HS_SLEW (0x3F << 6)
+#define USB2_OTG_FS_SLEW (0x3 << 12)
+#define USB2_OTG_LS_RSLEW (0x3 << 14)
+#define USB2_OTG_LS_FSLEW (0x3 << 16)
+#define USB2_OTG_PD (0x1 << 19)
+#define USB2_OTG_PD2 (0x1 << 20)
+#define USB2_OTG_PD_ZI (0x1 << 21)
+#define USB2_OTG_PD_CHRP_FORCE_POWERUP (0x1 << 0)
+#define USB2_OTG_PD_DISC_FORCE_POWERUP (0x1 << 1)
+#define USB2_OTG_PD_DR (0x1 << 2)
+#define USB2_OTG_TERM_RANGE_AD (0xF << 3)
+#define USB2_OTG_HS_IREF_CAP (0x3 << 9)
+#define USB2_BIAS_HS_SQUELCH_LEVEL (0x3 << 0)
+#define USB2_BIAS_HS_DISCON_LEVEL (0x7 << 2)
+#define HSIC_TX_SLEWP (0xF << 8)
+#define HSIC_TX_SLEWN (0xF << 12)
+#define IOPHY_USB3_RXWANDER (0xF << 4)
+#define IOPHY_USB3_RXEQ (0xFFFF << 8)
+#define IOPHY_USB3_CDRCNTL (0xFF << 24)
+#define SNPS_OC_MAP_CTRL1 (0x7 << 0)
+#define SNPS_OC_MAP_CTRL2 (0x7 << 3)
+#define SNPS_OC_MAP_CTRL3 (0x7 << 6)
+#define SNPS_CTRL1_OC_DETECTED_VBUS_PAD0 (0x4 << 0)
+#define OC_DET_VBUS_ENABLE0_OC_MAP (0x7 << 10)
+#define OC_DET_VBUS_ENABLE1_OC_MAP (0x7 << 13)
+#define OC_DET_VBUS_EN0_OC_DETECTED_VBUS_PAD0 (0x4 << 10)
+#define OC_DET_VBUS_EN1_OC_DETECTED_VBUS_PAD1 (0x5 << 13)
+#define USB2_OC_MAP_PORT0 (0x7 << 0)
+#define USB2_OC_MAP_PORT1 (0x7 << 3)
+#define USB2_OC_MAP_PORT0_OC_DETECTED_VBUS_PAD0 (0x4 << 0)
+#define USB2_OC_MAP_PORT1_OC_DETECTED_VBUS_PAD1 (0x5 << 3)
+
 #define XUSB_CSB_MP_L2IMEMOP_TRIG				0x00101A14
 #define XUSB_CSB_MP_APMAP					0x0010181C
 #define XUSB_CSB_ARU_SCRATCH0				0x00100100
@@ -112,11 +159,11 @@
 #define MBOX_OWNER_SW						2
 #define MBOX_OWNER_ID_MASK					0xFF
 
-#define MBOX_CMD_TYPE_MASK					0xF0000000
-#define MBOX_CMD_DATA_MASK					0x0FFFFFFF
+#define MBOX_CMD_TYPE_MASK					0xFF000000
+#define MBOX_CMD_DATA_MASK					0x00FFFFFF
 #define MBOX_CMD_STATUS_MASK				MBOX_CMD_TYPE_MASK
 #define MBOX_CMD_RESULT_MASK				MBOX_CMD_DATA_MASK
-#define MBOX_CMD_SHIFT						28
+#define MBOX_CMD_SHIFT						24
 #define MBOX_SMI_INTR_EN					(1 << 3)
 
 /* PMC Register */
@@ -133,13 +180,16 @@
 #define DMEMAPERT_ENABLE_INIT				0x00000000
 #define CPUCTL_STARTCPU						0x00000002
 #define L2IMEMOP_SIZE_SRC_OFFSET_SHIFT		8
+#define L2IMEMOP_SIZE_SRC_OFFSET_MASK		0x3ff
 #define L2IMEMOP_SIZE_SRC_COUNT_SHIFT		24
-#define L2IMEMOP_TRIG_LOAD_LOCKED_SHIFT		24
-#define IMFILLRNG1_TAG_HI_SHIFT				16
-#define APMAP_BOOTPATH						0x80000000
+#define L2IMEMOP_SIZE_SRC_COUNT_MASK		0xff
+#define L2IMEMOP_TRIG_LOAD_LOCKED_SHIFT	24
+#define IMFILLRNG_TAG_MASK			0xffff
+#define IMFILLRNG1_TAG_HI_SHIFT		16
+#define APMAP_BOOTPATH						(1 << 31)
 #define L2IMEM_INVALIDATE_ALL				0x40000000
-#define L2IMEM_LOAD_LOCKED_RESULT			0x11
-#define FW_SIZE_OFFSET						0x100
+#define L2IMEM_LOAD_LOCKED_RESULT			(0x11 << 24)
+#define FW_SIZE_OFFSET						0x64
 #define HSIC_PORT1	0
 #define HSIC_PORT0	1
 #define ULPI_PORT	2
@@ -523,7 +573,7 @@
 
 #define USB2_BIAS_PAD_CTL_1_0	0xa4
 #define RCTRL(x)			(((x) & 0xffff) << 0)
-#define TCTRL(x)			(((x) & 0xffff) << 16)
+#define TCTRL(x)			(((x) & 0xffff0000) >> 16)
 
 #define HSIC_PAD0_CTL_0_0	0xa8
 #define HSIC_PAD1_CTL_0_0	0xac

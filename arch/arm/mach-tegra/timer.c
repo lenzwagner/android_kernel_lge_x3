@@ -6,7 +6,7 @@
  * Author:
  *	Colin Cross <ccross@google.com>
  *
- * Copyright (C) 2010-2013 NVIDIA Corporation.
+ * Copyright (C) 2010-2013 NVIDIA CORPORATION.  All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -55,17 +55,12 @@ extern int __init arch_timer_register(struct arch_timer *at);
 static void __iomem *timer_reg_base = IO_ADDRESS(TEGRA_TMR1_BASE);
 static void __iomem *rtc_base = IO_ADDRESS(TEGRA_RTC_BASE);
 
-static struct timespec persistent_ts;
 #ifdef CONFIG_ARM_ARCH_TIMER
-static u32 arch_timer_ns_mult, arch_timer_ns_shift;
 static u32 arch_timer_us_mult, arch_timer_us_shift;
-static u64 persistent_cycles, last_persistent_cycles;
-#else
-static u64 persistent_ms, last_persistent_ms;
 #endif
+static u64 persistent_ms, last_persistent_ms;
+static struct timespec persistent_ts;
 static u32 usec_config;
-static u32 usec_offset;
-static bool usec_suspended;
 
 #ifdef CONFIG_ARCH_TEGRA_2x_SOC
 static u32 system_timer = (TEGRA_TMR3_BASE - TEGRA_TMR1_BASE);
@@ -118,14 +113,6 @@ static struct clock_event_device tegra_clockevent = {
 	.set_mode	= tegra_timer_set_mode,
 };
 
-static u32 notrace tegra_read_usec(void)
-{
-	u32 cyc = usec_offset;
-	if (!usec_suspended)
-		cyc += timer_readl(TIMERUS_CNTR_1US);
-	return cyc;
-}
-
 u32 notrace tegra_read_usec_raw(void)
 {
 	return timer_readl(TIMERUS_CNTR_1US);
@@ -133,7 +120,7 @@ u32 notrace tegra_read_usec_raw(void)
 
 static u32 notrace tegra_read_sched_clock(void)
 {
-	return tegra_read_usec();
+	return timer_readl(TIMERUS_CNTR_1US);
 }
 
 /*
@@ -149,29 +136,6 @@ u64 tegra_rtc_read_ms(void)
 	return (u64)s * MSEC_PER_SEC + ms;
 }
 
-#ifdef CONFIG_ARM_ARCH_TIMER
-
-/*
- * read_persistent_clock -  Return time from a persistent clock.
- *
- * For systems with arch timer, TSC runs even during suspend
- */
-void read_persistent_clock(struct timespec *ts)
-{
-	u32 cvalh, cvall;
-	u64 delta;
-	struct timespec *tsp = &persistent_ts;
-
-	asm volatile("mrrc p15, 1, %0, %1, c14" : "=r" (cvall), "=r" (cvalh));
-
-	last_persistent_cycles = persistent_cycles;
-	persistent_cycles = ((u64)cvalh << 32) | cvall;
-	delta = persistent_cycles - last_persistent_cycles;
-	delta = (delta * arch_timer_ns_mult) >> arch_timer_ns_shift;
-	timespec_add_ns(tsp, delta);
-	*ts = *tsp;
-}
-#else
 /*
  * read_persistent_clock -  Return time from a persistent clock.
  *
@@ -194,7 +158,6 @@ void read_persistent_clock(struct timespec *ts)
 	timespec_add_ns(tsp, delta * NSEC_PER_MSEC);
 	*ts = *tsp;
 }
-#endif
 
 static irqreturn_t tegra_timer_interrupt(int irq, void *dev_id)
 {
@@ -219,19 +182,12 @@ static struct irqaction tegra_timer_irq = {
 static int tegra_timer_suspend(void)
 {
 	usec_config = timer_readl(TIMERUS_USEC_CFG);
-
-	usec_offset += timer_readl(TIMERUS_CNTR_1US);
-	usec_suspended = true;
-
 	return 0;
 }
 
 static void tegra_timer_resume(void)
 {
 	timer_writel(usec_config, TIMERUS_USEC_CFG);
-
-	usec_offset -= timer_readl(TIMERUS_CNTR_1US);
-	usec_suspended = false;
 }
 
 static struct syscore_ops tegra_timer_syscore_ops = {
@@ -312,26 +268,7 @@ static void __init tegra_init_late_timer(void)
 
 #ifdef CONFIG_ARM_ARCH_TIMER
 
-#ifndef CONFIG_TRUSTED_FOUNDATIONS
-/* Time Stamp Counter (TSC) base address */
-static void __iomem *tsc = IO_ADDRESS(TEGRA_TSC_BASE);
-#endif
-
 static bool arch_timer_initialized;
-
-#define TSC_CNTCR		0		/* TSC control registers */
-#define TSC_CNTCR_ENABLE	(1 << 0)	/* Enable*/
-#define TSC_CNTCR_HDBG		(1 << 1)	/* Halt on debug */
-
-#define TSC_CNTCV0		0x8		/* TSC counter (LSW) */
-#define TSC_CNTCV1		0xC		/* TSC counter (MSW) */
-#define TSC_CNTFID0		0x20		/* TSC freq id 0 */
-
-#define tsc_writel(value, reg) \
-	__raw_writel(value, (u32)tsc + (reg))
-#define tsc_readl(reg) \
-	__raw_readl((u32)tsc + (reg))
-
 
 /* Is the optional system timer available? */
 static int local_timer_is_architected(void)
@@ -342,12 +279,7 @@ static int local_timer_is_architected(void)
 
 void __init tegra_cpu_timer_init(void)
 {
-	u64 sec;
 	u32 tsc_ref_freq;
-#ifdef CONFIG_TRUSTED_FOUNDATIONS
-	tsc_ref_freq = tegra_clk_measure_input_freq();
-#else
-	u32 reg;
 
 	if (!local_timer_is_architected())
 		return;
@@ -355,36 +287,15 @@ void __init tegra_cpu_timer_init(void)
 	tsc_ref_freq = tegra_clk_measure_input_freq();
 	if (tsc_ref_freq == 115200 || tsc_ref_freq == 230400) {
 		/*
-		 * OSC detection function will bug out if revision is not QT and
-		 * the detected frequency is one of these two.
+		 * OSC detection function will bug out if revision is not
+		 * QT and the detected frequency is one of these two.
 		 */
 		tsc_ref_freq = 13000000;
 		pr_info("fake tsc_ref_req=%d in QT\n", tsc_ref_freq);
 	}
 
-	/* Set the Timer System Counter (TSC) reference frequency
-	   NOTE: this is a write once register */
-	tsc_writel(tsc_ref_freq, TSC_CNTFID0);
-
-	/* Program CNTFRQ to the same value.
-	   NOTE: this is a write once (per CPU reset) register. */
-	__asm__("mcr p15, 0, %0, c14, c0, 0\n" : : "r" (tsc_ref_freq));
-
-	/* CNTFRQ must agree with the TSC reference frequency. */
-	__asm__("mrc p15, 0, %0, c14, c0, 0\n" : "=r" (reg));
-	BUG_ON(reg != tsc_ref_freq);
-
-	/* Enable the TSC. */
-	reg = tsc_readl(TSC_CNTCR);
-	reg |= TSC_CNTCR_ENABLE | TSC_CNTCR_HDBG;
-	tsc_writel(reg, TSC_CNTCR);
-#endif
-	sec = CLOCKSOURCE_MASK(56);
-	do_div(sec, tsc_ref_freq);
-	clocks_calc_mult_shift(&arch_timer_ns_mult, &arch_timer_ns_shift,
-				tsc_ref_freq, NSEC_PER_SEC, sec);
 	clocks_calc_mult_shift(&arch_timer_us_mult, &arch_timer_us_shift,
-				tsc_ref_freq, USEC_PER_SEC, sec);
+				tsc_ref_freq, USEC_PER_SEC, 0);
 	return;
 }
 
