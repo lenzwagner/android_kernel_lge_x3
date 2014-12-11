@@ -203,6 +203,31 @@ struct palmas_rtc_platform_data {
 	unsigned charging_current_ua;
 };
 
+struct palmas_gpadc_platform_data {
+	int channel0_current_uA;
+	int channel3_current_uA;
+};
+
+struct palmas_pinctrl_config {
+	int pin_name;
+	int pin_mux_option;
+	int open_drain_state;
+	int pin_pull_up_dn;
+};
+
+struct palmas_pinctrl_platform_data {
+	struct palmas_pinctrl_config *pincfg;
+	int num_pinctrl;
+	bool dvfs1_enable;
+	bool dvfs2_enable;
+};
+
+struct palmas_extcon_platform_data {
+	const char *connection_name;
+	bool enable_vbus_detection;
+	bool enable_id_pin_detection;
+};
+
 struct palmas_platform_data {
 	int gpio_base;
 	int irq_base;
@@ -224,6 +249,14 @@ struct palmas_platform_data {
 	struct palmas_clk32k_init_data  *clk32k_init_data;
 	int clk32k_init_data_size;
 	bool use_power_off;
+
+	struct palmas_pinctrl_platform_data *pinctrl_pdata;
+	struct palmas_extcon_platform_data *extcon_pdata;
+
+	int watchdog_timer_initial_period;
+
+	/* Long press delay for hard shutdown */
+	int long_press_delay;
 };
 
 /* Define the palmas IRQ numbers */

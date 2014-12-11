@@ -3,7 +3,7 @@
  * monitor sensor
  *
  *
- * Copyright (c) 2011-2013, NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2009-2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -71,9 +71,9 @@ D15|D14 D13 D12|D11 D10 D09|D08 D07 D06|D05 D04 D03|D02 D01 D00
 rst|-   -   -  |AVG        |Vbus_CT    |Vsh_CT     |MODE
 */
 #define INA230_RESET		(1 << 15)
-#define INA230_AVG		(0 << 9) /* 0 Averages */
+#define INA230_AVG		(1 << 9) /* 4 Averages */
 #define INA230_VBUS_CT		(0 << 6) /* Vbus 140us conversion time */
-#define INA230_VSH_CT		(0 << 3) /* Vshunt 140us conversion time */
+#define INA230_VSH_CT		(3 << 3) /* Vshunt 588us conversion time */
 
 #if MEASURE_BUS_VOLT
 #define INA230_CONT_MODE	7	/* Continuous Bus and shunt measure */
@@ -96,7 +96,8 @@ SOL|SUL|BOL|BUL|POL|CVR|-   -   -   -   -  |AFF|CVF|OVF|APO|LEN
 */
 #define INA230_MASK_SOL		(1 << 15)
 #define INA230_MASK_SUL		(1 << 14)
-
+#define INA230_MASK_CVF		(1 << 3)
+#define INA230_MAX_CONVERSION_TRIALS	50
 
 struct ina230_data {
 	struct device *hwmon_dev;
@@ -236,6 +237,7 @@ static s32 power_down_ina230(struct i2c_client *client)
 static s32 __locked_start_current_mon(struct i2c_client *client)
 {
 	s32 retval;
+	s16 shunt_uV;
 	s16 shunt_limit;
 	s16 alert_mask;
 	struct ina230_data *data = i2c_get_clientdata(client);
@@ -253,8 +255,11 @@ static s32 __locked_start_current_mon(struct i2c_client *client)
 		return retval;
 	}
 
-	shunt_limit = uv_to_alert_register(data->pdata->resistor *
-					   data->pdata->current_threshold);
+	shunt_uV = data->pdata->resistor * data->pdata->current_threshold;
+	if (data->pdata->shunt_polarity_inverted)
+		shunt_uV *= -1;
+
+	shunt_limit = uv_to_alert_register(shunt_uV);
 
 	retval = i2c_smbus_write_word_data(client, INA230_ALERT,
 					   cpu_to_be16(shunt_limit));
@@ -430,6 +435,30 @@ static s32 show_shunt_voltage(struct device *dev,
 	return sprintf(buf, "%d uV\n", voltage_uV);
 }
 
+static int  __locked_wait_for_conversion(struct device *dev)
+{
+	int retval, conversion, trials = 0;
+	struct i2c_client *client = to_i2c_client(dev);
+
+	/* wait till conversion ready bit is set */
+	do {
+		retval = be16_to_cpu(i2c_smbus_read_word_data(client,
+							INA230_MASK));
+		if (retval < 0) {
+			dev_err(dev, "mask data read failed sts: 0x%x\n",
+				retval);
+			return retval;
+		}
+		conversion = retval & INA230_MASK_CVF;
+	} while ((!conversion) && (++trials < INA230_MAX_CONVERSION_TRIALS));
+
+	if (trials == INA230_MAX_CONVERSION_TRIALS) {
+		dev_err(dev, "maximum retries exceeded\n");
+		return -EAGAIN;
+	}
+
+	return 0;
+}
 
 static s32 show_current(struct device *dev,
 			struct device_attribute *attr,
@@ -441,12 +470,6 @@ static s32 show_current(struct device *dev,
 	int retval;
 
 	mutex_lock(&data->mutex);
-	retval = ensure_enabled_start(client);
-	if (retval < 0) {
-		mutex_unlock(&data->mutex);
-		return retval;
-	}
-
 	/* fill calib data */
 	retval = i2c_smbus_write_word_data(client, INA230_CAL,
 		__constant_cpu_to_be16(data->pdata->calibration_data));
@@ -457,19 +480,35 @@ static s32 show_current(struct device *dev,
 		return retval;
 	}
 
-	/* getting current readings in milli amps*/
-	current_mA = be16_to_cpu(i2c_smbus_read_word_data(client,
-		INA230_CURRENT));
-	if (current_mA < 0) {
+	retval = ensure_enabled_start(client);
+	if (retval < 0) {
 		mutex_unlock(&data->mutex);
-		return -EINVAL;
+		return retval;
 	}
+
+	retval = __locked_wait_for_conversion(dev);
+	if (retval) {
+		mutex_unlock(&data->mutex);
+		return retval;
+	}
+
+	/* getting current readings in milli amps*/
+	retval = i2c_smbus_read_word_data(client, INA230_CURRENT);
+	if (retval < 0) {
+		mutex_unlock(&data->mutex);
+		return retval;
+	}
+	current_mA = (s16) be16_to_cpu(retval);
 
 	ensure_enabled_end(client);
 	mutex_unlock(&data->mutex);
 
-	current_mA =
-		(current_mA * data->pdata->power_lsb) / data->pdata->divisor;
+	if (data->pdata->shunt_polarity_inverted)
+		current_mA *= -1;
+
+	current_mA *= (s16) data->pdata->power_lsb;
+	if (data->pdata->divisor)
+		current_mA /= (s16) data->pdata->divisor;
 	if (data->pdata->precision_multiplier)
 		current_mA /= data->pdata->precision_multiplier;
 
@@ -486,11 +525,6 @@ static s32 show_power(struct device *dev,
 	int retval;
 
 	mutex_lock(&data->mutex);
-	retval = ensure_enabled_start(client);
-	if (retval < 0) {
-		mutex_unlock(&data->mutex);
-		return retval;
-	}
 
 	/* fill calib data */
 	retval = i2c_smbus_write_word_data(client, INA230_CAL,
@@ -498,6 +532,18 @@ static s32 show_power(struct device *dev,
 	if (retval < 0) {
 		dev_err(dev, "calibration data write failed sts: 0x%x\n",
 			retval);
+		mutex_unlock(&data->mutex);
+		return retval;
+	}
+
+	retval = ensure_enabled_start(client);
+	if (retval < 0) {
+		mutex_unlock(&data->mutex);
+		return retval;
+	}
+
+	retval = __locked_wait_for_conversion(dev);
+	if (retval) {
 		mutex_unlock(&data->mutex);
 		return retval;
 	}
@@ -691,7 +737,7 @@ static int __devexit ina230_remove(struct i2c_client *client)
 }
 
 
-static int ina230_suspend(struct i2c_client *client)
+static int ina230_suspend(struct i2c_client *client, pm_message_t mesg)
 {
 #ifdef CONFIG_MACH_X3
 	int ret;
