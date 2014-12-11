@@ -1951,8 +1951,8 @@ static __devinit int tegra_max98088_driver_probe(struct platform_device *pdev)
 #ifndef CONFIG_ARCH_TEGRA_2x_SOC
 	for (i = 0; i < NUM_I2S_DEVICES ; i++) {
  #ifdef CONFIG_MACH_X3
-		machine->codec_info[i].dam_gain[0] = 0x2000;
-		machine->codec_info[i].dam_gain[1] = 0x2000;
+		machine->codec_info[i].dam_gain[0] = 0x1A00;
+		machine->codec_info[i].dam_gain[1] = 0x1A00;
  #endif
 		machine->codec_info[i].i2s_id =
 			pdata->i2s_param[i].audio_port_id;

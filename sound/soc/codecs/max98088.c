@@ -1817,10 +1817,7 @@ static int max98088_set_bias_level(struct snd_soc_codec *codec,
 #endif
 
        switch (level) {
-       case SND_SOC_BIAS_ON:
-#ifdef CONFIG_MACH_X3
-               level = SND_SOC_BIAS_STANDBY;
-#endif
+       case SND_SOC_BIAS_ON:                                          
                break;
 
        case SND_SOC_BIAS_PREPARE:
@@ -2345,12 +2342,7 @@ static int max98088_probe(struct snd_soc_codec *codec)
        int ret = 0;
 
        codec->cache_sync = 1;
-
-#ifdef CONFIG_MACH_X3
-      codec->dapm.idle_bias_off = 0;
-#else
-       codec->dapm.idle_bias_off = 1;
-#endif
+	codec->dapm.idle_bias_off = 1;
 
        ret = snd_soc_codec_set_cache_io(codec, 8, 8, SND_SOC_I2C);
        if (ret != 0) {
