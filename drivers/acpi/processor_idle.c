@@ -1011,6 +1011,9 @@ static int acpi_processor_setup_cpuidle(struct acpi_processor *pr)
 		return -EINVAL;
 	}
 
+	if (!dev)
+		return -EINVAL;
+
 	dev->cpu = pr->id;
 	dev->safe_state_index = -1;
 	for (i = 0; i < CPUIDLE_STATE_MAX; i++) {
