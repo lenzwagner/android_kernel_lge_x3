@@ -20,7 +20,7 @@
 #include <linux/miscdevice.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
-#include <media/tegra_camera.h>   //                                                                                          
+#include <video/tegra_camera.h>   //                                                                                          
 #include <media/imx111.h>
 #include <linux/gpio.h>
 #include <mach/gpio-tegra.h>
@@ -1195,7 +1195,7 @@ static int imx111_read_reg(struct i2c_client *client, u16 addr, u8 *val)
 {
 	int err;
 	struct i2c_msg msg[2];
-	unsigned char data[3] = {0x0,}; //                                       
+	unsigned char data[3] = { 0x0 };
 
 	if (!client->adapter)
 		return -ENODEV;
@@ -1728,7 +1728,7 @@ static int imx111_probe(struct i2c_client *client,
 
 
 	i2c_set_clientdata(client, info);
-	tegra_gpio_enable(IMX111_RESET_GPIO);
+//	tegra_gpio_enable(IMX111_RESET_GPIO);
 	err = gpio_request(IMX111_RESET_GPIO, "8m_cam_reset");
   if (err < 0)
     pr_err("%s: gpio_request failed for gpio %s\n",

@@ -2,6 +2,7 @@
  * TI Palmas
  *
  * Copyright 2011 Texas Instruments Inc.
+ * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * Author: Graeme Gregory <gg@slimlogic.co.uk>
  *
@@ -39,8 +40,7 @@ struct palmas {
 	/* IRQ Data */
 	int irq;
 	u32 irq_mask;
-	struct mutex irq_lock;
-	struct regmap_irq_chip_data *irq_data;
+	struct palmas_irq_chip_data *irq_chip_data;
 
 	/* Child Devices */
 	struct palmas_pmic *pmic;
@@ -114,6 +114,8 @@ struct palmas_reg_init {
 	 */
 	u8 vsel;
 
+	/* Configuration flags */
+	unsigned int config_flags;
 };
 
 enum palmas_regulators {
@@ -236,19 +238,15 @@ struct palmas_platform_data {
 	/* bit value to be loaded to the POWER_CTRL register */
 	u8 power_ctrl;
 
-	/*
-	 * boolean to select if we want to configure muxing here
-	 * then the two value to load into the registers if true
-	 */
-	int mux_from_pdata;
-	u8 pad1, pad2, pad3;
-
 	struct palmas_pmic_platform_data *pmic_pdata;
 	struct palmas_rtc_platform_data *rtc_pdata;
+	struct palmas_gpadc_platform_data *adc_pdata;
 
 	struct palmas_clk32k_init_data  *clk32k_init_data;
 	int clk32k_init_data_size;
 	bool use_power_off;
+	/* LDOUSB is enabled or disabled on VBUS detection */
+	bool auto_ldousb_en;
 
 	struct palmas_pinctrl_platform_data *pinctrl_pdata;
 	struct palmas_extcon_platform_data *extcon_pdata;
@@ -310,10 +308,14 @@ struct palmas_pmic {
 
 	int smps123;
 	int smps457;
+	bool smps10_regulator_enabled;
 
 	unsigned int ramp_delay[PALMAS_NUM_REGS];
+	unsigned int current_mode_reg[PALMAS_NUM_REGS];
 
 	int range[PALMAS_REG_SMPS10];
+	unsigned long roof_floor[PALMAS_NUM_REGS];
+	unsigned long config_flags[PALMAS_NUM_REGS];
 };
 
 /* defines so we can store the mux settings */
@@ -1239,6 +1241,13 @@ struct palmas_pmic {
 #define PALMAS_LONG_PRESS_KEY_PWRON_DEBOUNCE_MASK		0x03
 #define PALMAS_LONG_PRESS_KEY_PWRON_DEBOUNCE_SHIFT		0
 
+/* Register bit values for various Long_Press_key durations */
+#define PALMAS_LONG_PRESS_KEY_TIME_DEFAULT	-1
+#define PALMAS_LONG_PRESS_KEY_TIME_6SECONDS	0
+#define PALMAS_LONG_PRESS_KEY_TIME_8SECONDS	1
+#define PALMAS_LONG_PRESS_KEY_TIME_10SECONDS	2
+#define PALMAS_LONG_PRESS_KEY_TIME_12SECONDS	3
+
 /* Bit definitions for OSC_THERM_CTRL */
 #define PALMAS_OSC_THERM_CTRL_VANA_ON_IN_SLEEP			0x80
 #define PALMAS_OSC_THERM_CTRL_VANA_ON_IN_SLEEP_SHIFT		7
@@ -1803,6 +1812,10 @@ struct palmas_pmic {
 /* Bit definitions for PWM_CTRL2 */
 #define PALMAS_PWM_CTRL2_PWM_DUTY_SEL_MASK			0xff
 #define PALMAS_PWM_CTRL2_PWM_DUTY_SEL_SHIFT			0
+
+/* Maximum INT mask/edge regsiter */
+#define PALMAS_MAX_INTERRUPT_MASK_REG				4
+#define PALMAS_MAX_INTERRUPT_EDGE_REG				8
 
 /* Registers for function INTERRUPT */
 #define PALMAS_INT1_STATUS					0x0
@@ -2727,11 +2740,20 @@ struct palmas_pmic {
 #define PALMAS_GPADC_TRIM14					0xD
 #define PALMAS_GPADC_TRIM15					0xE
 #define PALMAS_GPADC_TRIM16					0xF
+#define PALMAS_GPADC_TRIMINVALID				-1
 
 enum {
 	PALMAS_EXT_CONTROL_ENABLE1	= 0x1,
 	PALMAS_EXT_CONTROL_ENABLE2	= 0x2,
 	PALMAS_EXT_CONTROL_NSLEEP	= 0x4,
+};
+
+/**
+ * Palmas regulator configs
+ * PALMAS_REGULATOR_CONFIG_SUSPEND_FORCE_OFF: Force off on suspend
+ */
+enum {
+	PALMAS_REGULATOR_CONFIG_SUSPEND_FORCE_OFF = 0x1,
 };
 
 /*
@@ -2748,6 +2770,28 @@ enum {
 	PALMAS_GPIO7,
 
 	PALMAS_GPIO_NR,
+};
+
+/* Palma GPADC Channels */
+enum {
+	PALMAS_ADC_CH_IN0,
+	PALMAS_ADC_CH_IN1,
+	PALMAS_ADC_CH_IN2,
+	PALMAS_ADC_CH_IN3,
+	PALMAS_ADC_CH_IN4,
+	PALMAS_ADC_CH_IN5,
+	PALMAS_ADC_CH_IN6,
+	PALMAS_ADC_CH_IN7,
+	PALMAS_ADC_CH_IN8,
+	PALMAS_ADC_CH_IN9,
+	PALMAS_ADC_CH_IN10,
+	PALMAS_ADC_CH_IN11,
+	PALMAS_ADC_CH_IN12,
+	PALMAS_ADC_CH_IN13,
+	PALMAS_ADC_CH_IN14,
+	PALMAS_ADC_CH_IN15,
+
+	PALMAS_ADC_CH_MAX,
 };
 
 /* Palma Sleep requestor IDs IDs */
@@ -2781,6 +2825,73 @@ enum {
 
 	/* Last entry */
 	PALMAS_SLEEP_REQSTR_ID_MAX,
+};
+
+/* Palmas Pinmux option */
+enum {
+	PALMAS_PINMUX_GPIO = 0,
+	PALMAS_PINMUX_LED,
+	PALMAS_PINMUX_PWM,
+	PALMAS_PINMUX_REGEN,
+	PALMAS_PINMUX_SYSEN,
+	PALMAS_PINMUX_CLK32KGAUDIO,
+	PALMAS_PINMUX_ID,
+	PALMAS_PINMUX_VBUS_DET,
+	PALMAS_PINMUX_CHRG_DET,
+	PALMAS_PINMUX_VAC,
+	PALMAS_PINMUX_VACOK,
+	PALMAS_PINMUX_POWERGOOD,
+	PALMAS_PINMUX_USB_PSEL,
+	PALMAS_PINMUX_MSECURE,
+	PALMAS_PINMUX_PWRHOLD,
+	PALMAS_PINMUX_INT,
+	PALMAS_PINMUX_DVFS2,
+	PALMAS_PINMUX_DVFS1,
+	PALMAS_PINMUX_NRESWARM,
+	PALMAS_PINMUX_PWRDOWN,
+	PALMAS_PINMUX_GPADC_START,
+	PALMAS_PINMUX_RESET_IN,
+	PALMAS_PINMUX_NSLEEP,
+	PALMAS_PINMUX_ENABLE1,
+	PALMAS_PINMUX_ENABLE2,
+	PALMAS_PINMUX_RESVD = 0x2000,
+	PALMAS_PINMUX_DEFAULT = 0x4000,
+	PALMAS_PINMUX_INVALID = 0x8000,
+};
+
+/* Palmas Pinmux Pullup/pulldown/opendrain configuration. */
+enum {
+	PALMAS_PIN_CONFIG_DEFAULT,
+	PALMAS_PIN_CONFIG_NORMAL,
+	PALMAS_PIN_CONFIG_PULL_UP,
+	PALMAS_PIN_CONFIG_PULL_DOWN,
+
+	PALMAS_PIN_CONFIG_OD_DEFAULT,
+	PALMAS_PIN_CONFIG_OD_ENABLE,
+	PALMAS_PIN_CONFIG_OD_DISABLE,
+};
+
+/* Palmas Pins name */
+enum {
+	PALMAS_PIN_NAME_GPIO0,
+	PALMAS_PIN_NAME_GPIO1,
+	PALMAS_PIN_NAME_GPIO2,
+	PALMAS_PIN_NAME_GPIO3,
+	PALMAS_PIN_NAME_GPIO4,
+	PALMAS_PIN_NAME_GPIO5,
+	PALMAS_PIN_NAME_GPIO6,
+	PALMAS_PIN_NAME_GPIO7,
+	PALMAS_PIN_NAME_VAC,
+	PALMAS_PIN_NAME_POWERGOOD,
+	PALMAS_PIN_NAME_NRESWARM,
+	PALMAS_PIN_NAME_PWRDOWN,
+	PALMAS_PIN_NAME_GPADC_START,
+	PALMAS_PIN_NAME_RESET_IN,
+	PALMAS_PIN_NAME_NSLEEP,
+	PALMAS_PIN_NAME_ENABLE1,
+	PALMAS_PIN_NAME_ENABLE2,
+	PALMAS_PIN_NAME_INT,
+	PALMAS_PIN_NAME_MAX,
 };
 
 extern int palmas_ext_power_req_config(struct palmas *palmas,
@@ -2833,10 +2944,7 @@ static inline int palmas_update_bits(struct palmas *palmas, unsigned int base,
 	return regmap_update_bits(palmas->regmap[slave_id], addr, mask, val);
 }
 
-static inline int palmas_irq_get_virq(struct palmas *palmas, int irq)
-{
-	return regmap_irq_get_virq(palmas->irq_data, irq);
-}
+extern int palmas_irq_get_virq(struct palmas *palmas, int irq);
 
 static inline int palmas_is_es_version_or_less(struct palmas *palmas,
 	int major, int minor)
@@ -2850,4 +2958,6 @@ static inline int palmas_is_es_version_or_less(struct palmas *palmas,
 
 	return false;
 }
+
+extern void palmas_reset(void);
 #endif /*  __LINUX_MFD_PALMAS_H */

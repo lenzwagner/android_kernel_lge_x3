@@ -1,7 +1,7 @@
 /*
  * drivers/media/video/tegra/nvavp/nvavp_dev.c
  *
- * Copyright (c) 2012, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * This file is licensed under the terms of the GNU General Public License
  * version 2. This program is licensed "as is" without any warranty of any
@@ -138,9 +138,8 @@ struct nvavp_info {
 	/* client for driver allocations, persistent */
 	struct nvmap_client		*nvmap;
 
-	bool				pending;
-
 	struct nvavp_channel		channel_info[NVAVP_NUM_CHANNELS];
+	bool				pending;
 
 	u32				syncpt_id;
 	u32				syncpt_value;
@@ -159,8 +158,8 @@ struct nvavp_clientctx {
 	struct nvmap_handle_ref *gather_mem;
 	int num_relocs;
 	struct nvavp_info *nvavp;
-	u32 clk_reqs;
 	int channel_id;
+	u32 clk_reqs;
 };
 
 #if defined(CONFIG_TEGRA_NVAVP_AUDIO)
@@ -235,6 +234,12 @@ static void nvavp_set_channel_control_area(struct nvavp_info *nvavp, int channel
 	/* enable avp idle timeout interrupt */
 	writel(0x1, &control->idle_notify_enable);
 	writel(NVAVP_OS_IDLE_TIMEOUT, &control->idle_notify_delay);
+
+#if defined(CONFIG_ARCH_TEGRA_11x_SOC)
+	/* enable sync pt trap enable for avp */
+	if (IS_VIDEO_CHANNEL_ID(channel_id))
+		writel(0x1, &control->sync_pt_incr_trap_enable);
+#endif
 
 	/* init dma start and end pointers */
 	writel(channel_info->pushbuf_phys, &control->dma_start);
@@ -353,8 +358,8 @@ static void clock_disable_handler(struct work_struct *work)
 
 	nvavp = container_of(work, struct nvavp_info,
 			    clock_disable_work);
-	channel_info = nvavp_get_channel_info(nvavp, NVAVP_VIDEO_CHANNEL);
 
+	channel_info = nvavp_get_channel_info(nvavp, NVAVP_VIDEO_CHANNEL);
 	mutex_lock(&channel_info->pushbuffer_lock);
 	mutex_lock(&nvavp->open_lock);
 	if (nvavp_check_idle(nvavp, NVAVP_VIDEO_CHANNEL) && nvavp->pending) {
@@ -377,6 +382,13 @@ static int nvavp_service(struct nvavp_info *nvavp)
 
 	if (inbox & NVE276_OS_INTERRUPT_VIDEO_IDLE)
 		schedule_work(&nvavp->clock_disable_work);
+
+	if (inbox & NVE276_OS_INTERRUPT_SYNCPT_INCR_TRAP) {
+		/* sync pnt incr */
+		if (nvavp->syncpt_id == NVE276_OS_SYNCPT_INCR_TRAP_GET_SYNCPT(inbox))
+			nvhost_syncpt_cpu_incr_ext(
+				nvavp->nvhost_dev, nvavp->syncpt_id);
+	}
 
 #if defined(CONFIG_TEGRA_NVAVP_AUDIO)
 	if (inbox & NVE276_OS_INTERRUPT_AUDIO_IDLE)
@@ -680,14 +692,12 @@ static int nvavp_pushbuffer_update(struct nvavp_info *nvavp, u32 phys_addr,
 	}
 
 	/* enable clocks to VDE/BSEV */
-	if (IS_VIDEO_CHANNEL_ID(channel_id)) {
-		mutex_lock(&nvavp->open_lock);
-		if (!nvavp->pending) {
-			nvavp_clks_enable(nvavp);
-			nvavp->pending = true;
-		}
-		mutex_unlock(&nvavp->open_lock);
+	mutex_lock(&nvavp->open_lock);
+	if (!nvavp->pending && IS_VIDEO_CHANNEL_ID(channel_id)) {
+		nvavp_clks_enable(nvavp);
+		nvavp->pending = true;
 	}
+	mutex_unlock(&nvavp->open_lock);
 
 	/* update put pointer */
 	channel_info->pushbuf_index = (channel_info->pushbuf_index + wordcount)&
@@ -1337,7 +1347,7 @@ static int nvavp_force_clock_stay_on_ioctl(struct file *filp, unsigned int cmd,
 		__func__, clock.state);
 
 	if (clock.state != NVAVP_CLOCK_STAY_ON_DISABLED &&
-	    clock.state !=  NVAVP_CLOCK_STAY_ON_ENABLED) {
+		   clock.state !=  NVAVP_CLOCK_STAY_ON_ENABLED) {
 		dev_err(&nvavp->nvhost_dev->dev, "%s: invalid argument=%d\n",
 			__func__, clock.state);
 		return -EINVAL;

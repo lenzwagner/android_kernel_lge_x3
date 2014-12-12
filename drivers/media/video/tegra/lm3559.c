@@ -110,8 +110,7 @@ int lm3559_write_reg(struct i2c_client *client, unsigned char addr, unsigned cha
 {
 	int err = 0;  
 	int retry = 0;
-
-	unsigned char buf[2] ={0,};
+	unsigned char buf[2] = { 0 };
 	
 	struct i2c_msg msg[] = {
 		{
@@ -146,7 +145,7 @@ int lm3559_write_reg(struct i2c_client *client, unsigned char addr, unsigned cha
 int lm3559_read_reg(struct i2c_client *client, unsigned char addr, unsigned char *data)
 {
 	int err = 0;
-	unsigned char buf[1] ={0};
+	unsigned char buf[1] = { 0 };
 	
 	struct i2c_msg msgs[] = {	
 		{ 
