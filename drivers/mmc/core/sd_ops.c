@@ -9,9 +9,9 @@
  * your option) any later version.
  */
 
-#include <linux/export.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <linux/export.h>
 #include <linux/scatterlist.h>
 
 #include <linux/mmc/host.h>
@@ -68,7 +68,7 @@ EXPORT_SYMBOL_GPL(mmc_app_cmd);
 int mmc_wait_for_app_cmd(struct mmc_host *host, struct mmc_card *card,
 	struct mmc_command *cmd, int retries)
 {
-	struct mmc_request mrq = {0};
+	struct mmc_request mrq = {NULL};
 
 	int i, err;
 
@@ -245,7 +245,7 @@ int mmc_send_relative_addr(struct mmc_host *host, unsigned int *rca)
 int mmc_app_send_scr(struct mmc_card *card, u32 *scr)
 {
 	int err;
-	struct mmc_request mrq = {0};
+	struct mmc_request mrq = {NULL};
 	struct mmc_command cmd = {0};
 	struct mmc_data data = {0};
 	struct scatterlist sg;
@@ -304,7 +304,7 @@ int mmc_app_send_scr(struct mmc_card *card, u32 *scr)
 int mmc_sd_switch(struct mmc_card *card, int mode, int group,
 	u8 value, u8 *resp)
 {
-	struct mmc_request mrq = {0};
+	struct mmc_request mrq = {NULL};
 	struct mmc_command cmd = {0};
 	struct mmc_data data = {0};
 	struct scatterlist sg;
@@ -349,7 +349,7 @@ int mmc_sd_switch(struct mmc_card *card, int mode, int group,
 int mmc_app_sd_status(struct mmc_card *card, void *ssr)
 {
 	int err;
-	struct mmc_request mrq = {0};
+	struct mmc_request mrq = {NULL};
 	struct mmc_command cmd = {0};
 	struct mmc_data data = {0};
 	struct scatterlist sg;

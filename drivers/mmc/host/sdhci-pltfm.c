@@ -2,7 +2,7 @@
  * sdhci-pltfm.c Support for SDHCI platform devices
  * Copyright (c) 2009 Intel Corporation
  *
- * Copyright (c) 2007 Freescale Semiconductor, Inc.
+ * Copyright (c) 2007, 2011 Freescale Semiconductor, Inc.
  * Copyright (c) 2009 MontaVista Software, Inc.
  *
  * Authors: Xiaobo Xie <X.Xie@freescale.com>
@@ -28,9 +28,8 @@
  * Inspired by sdhci-pci.c, by Pierre Ossman
  */
 
-#include <linux/module.h>
-#include <linux/export.h>
 #include <linux/err.h>
+#include <linux/module.h>
 #include <linux/of.h>
 #ifdef CONFIG_PPC
 #include <asm/machdep.h>
@@ -71,6 +70,14 @@ void sdhci_get_of_property(struct platform_device *pdev)
 
 		if (sdhci_of_wp_inverted(np))
 			host->quirks |= SDHCI_QUIRK_INVERTED_WRITE_PROTECT;
+
+		if (of_device_is_compatible(np, "fsl,p2020-rev1-esdhc"))
+			host->quirks |= SDHCI_QUIRK_BROKEN_DMA;
+
+		if (of_device_is_compatible(np, "fsl,p2020-esdhc") ||
+		    of_device_is_compatible(np, "fsl,p1010-esdhc") ||
+		    of_device_is_compatible(np, "fsl,mpc8536-esdhc"))
+			host->quirks |= SDHCI_QUIRK_BROKEN_TIMEOUT_VAL;
 
 		clk = of_get_property(np, "clock-frequency", &size);
 		if (clk && size == sizeof(*clk) && *clk)
@@ -118,8 +125,11 @@ struct sdhci_host *sdhci_pltfm_init(struct platform_device *pdev,
 		host->ops = pdata->ops;
 	else
 		host->ops = &sdhci_pltfm_ops;
-	if (pdata)
+	if (pdata) {
 		host->quirks = pdata->quirks;
+		host->quirks2 = pdata->quirks2;
+	}
+
 	host->irq = platform_get_irq(pdev, 0);
 
 	if (!request_mem_region(iomem->start, resource_size(iomem),
@@ -195,47 +205,51 @@ int sdhci_pltfm_unregister(struct platform_device *pdev)
 EXPORT_SYMBOL_GPL(sdhci_pltfm_unregister);
 
 #ifdef CONFIG_PM
-int sdhci_pltfm_suspend(struct platform_device *dev, pm_message_t state)
+static int sdhci_pltfm_suspend(struct device *dev)
 {
-	struct sdhci_host *host = platform_get_drvdata(dev);
+	struct sdhci_host *host = dev_get_drvdata(dev);
 	int ret;
 
-	ret = sdhci_suspend_host(host, state);
+	ret = sdhci_suspend_host(host);
 	if (ret) {
-		dev_err(&dev->dev, "suspend failed, error = %d\n", ret);
+		dev_err(dev, "suspend failed, error = %d\n", ret);
 		return ret;
 	}
 
 	if (host->ops && host->ops->suspend)
-		ret = host->ops->suspend(host, state);
+		ret = host->ops->suspend(host);
 	if (ret) {
-		dev_err(&dev->dev, "suspend hook failed, error = %d\n", ret);
+		dev_err(dev, "suspend hook failed, error = %d\n", ret);
 		sdhci_resume_host(host);
 	}
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(sdhci_pltfm_suspend);
 
-int sdhci_pltfm_resume(struct platform_device *dev)
+static int sdhci_pltfm_resume(struct device *dev)
 {
-	struct sdhci_host *host = platform_get_drvdata(dev);
+	struct sdhci_host *host = dev_get_drvdata(dev);
 	int ret = 0;
 
 	if (host->ops && host->ops->resume)
 		ret = host->ops->resume(host);
 	if (ret) {
-		dev_err(&dev->dev, "resume hook failed, error = %d\n", ret);
+		dev_err(dev, "resume hook failed, error = %d\n", ret);
 		return ret;
 	}
 
 	ret = sdhci_resume_host(host);
 	if (ret)
-		dev_err(&dev->dev, "resume failed, error = %d\n", ret);
+		dev_err(dev, "resume failed, error = %d\n", ret);
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(sdhci_pltfm_resume);
+
+const struct dev_pm_ops sdhci_pltfm_pmops = {
+	.suspend	= sdhci_pltfm_suspend,
+	.resume		= sdhci_pltfm_resume,
+};
+EXPORT_SYMBOL_GPL(sdhci_pltfm_pmops);
 #endif	/* CONFIG_PM */
 
 static int __init sdhci_pltfm_drv_init(void)

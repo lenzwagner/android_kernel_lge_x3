@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-x3-sdhci.c
  *
- * Copyright (C) 2011 NVIDIA Corporation.
+ * Copyright (C) 2011-2012 NVIDIA Corporation.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -28,6 +28,7 @@
 #include <mach/irqs.h>
 #include <mach/iomap.h>
 #include <mach/sdhci.h>
+#include <mach/gpio-tegra.h>
 #include <mach/io_dpd.h>
 
 #include "../gpio-names.h"
@@ -529,8 +530,6 @@ static void * x3_wifi_get_country_code(char *ccode)
 
 static int x3_wifi_power(int on)
 {
-	struct tegra_io_dpd *sd_dpd;
-
 	pr_debug("%s: %d\n", __func__, on);
 #if 0
 /* does not use dpd for sdmmc */
@@ -620,7 +619,6 @@ static int __init x3_wifi_init(void)
 int __init x3_sdhci_init(void)
 {
 	platform_device_register(&tegra_sdhci_device3);
-	platform_device_register(&tegra_sdhci_device0);
 
 	tegra_gpio_enable(X3_SD_CD);
 	tegra_sdhci_platform_data2.cd_gpio = X3_SD_CD;
@@ -629,7 +627,7 @@ int __init x3_sdhci_init(void)
 #ifdef CONFIG_DHD_USE_STATIC_BUF
 	x3_init_wlan_mem();
 #endif
-
+	platform_device_register(&tegra_sdhci_device0);
 	x3_wifi_init();	
 
 	return 0;

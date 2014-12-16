@@ -46,7 +46,8 @@ struct tegra_sdhci_platform_data {
 	int is_8bit;
 	int pm_flags;
 	int pm_caps;
-	int nominal_vcore_uV;
+	int nominal_vcore_mv;
+	int min_vcore_override_mv;
 	unsigned int max_clk_limit;
 	unsigned int ddr_clk_limit;
 	unsigned int tap_delay;
@@ -54,8 +55,10 @@ struct tegra_sdhci_platform_data {
 	unsigned int uhs_mask;
 	unsigned int sd_detect_in_suspend;
 	struct mmc_platform_data mmc_data;
-	int (*suspend_gpiocfg)(void);
-	void (*resume_gpiocfg)(void);
+	bool edp_support;
+	unsigned int edp_states[SD_EDP_NUM_STATES];
+	bool power_off_rail;
+	bool en_freq_scaling;
 };
 
 #endif
