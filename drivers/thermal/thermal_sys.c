@@ -36,6 +36,8 @@
 #include <linux/reboot.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
+#define CREATE_TRACE_POINTS
+#include <trace/events/thermal.h>
 
 #include "thermal_core.h"
 
@@ -376,6 +378,8 @@ static void handle_critical_trips(struct thermal_zone_device *tz,
 static void handle_thermal_trip(struct thermal_zone_device *tz, int trip)
 {
 	enum thermal_trip_type type;
+
+	trace_thermal_trip(tz->type, tz->temperature/1000);
 
 	tz->ops->get_trip_type(tz, trip, &type);
 
@@ -940,7 +944,7 @@ temp_crit_show(struct device *dev, struct device_attribute *attr,
 	long temperature;
 	int ret;
 
-	ret = tz->ops->get_trip_temp(tz, 0, &temperature);
+	ret = tz->ops->get_crit_temp(tz, &temperature);
 	if (ret)
 		return ret;
 
@@ -1443,6 +1447,7 @@ void thermal_cdev_update(struct thermal_cooling_device *cdev)
 	}
 	mutex_unlock(&cdev->lock);
 	cdev->ops->set_cur_state(cdev, target);
+	trace_cooling_device_update(cdev->type, target);
 	cdev->updated = true;
 }
 EXPORT_SYMBOL(thermal_cdev_update);
