@@ -40,14 +40,12 @@
 #include <linux/platform_device.h>
 
 #include <linux/irq.h>
-#include <linux/gpio.h>
 #include <linux/ioport.h>
 #include <linux/param.h>
 #include <linux/bitops.h>
 #include <linux/termios.h>
 #include <linux/wakelock.h>
-
-#include <mach/gpio-tegra.h>
+#include <linux/gpio.h>
 #include <linux/serial_core.h>
 #include <linux/tegra_uart.h>
 
@@ -364,7 +362,7 @@ static int bluesleep_hci_event(struct notifier_block *this,
 		if (!bluesleep_hdev) {
 			bluesleep_hdev = hdev;
 			if (bsi->has_ext_wake == 1) {
-				hu  = (struct hci_uart *) hdev->driver_data;
+				hu  = (struct hci_uart *)hci_get_drvdata(hdev);
 				state = (struct uart_state *) \
 							 hu->tty->driver_data;
 				bsi->uport = state->uart_port;
@@ -477,6 +475,14 @@ static int bluesleep_start(void)
 
 	set_bit(BT_PROTO, &flags);
 	return 0;
+#if 0
+fail:
+	if (bsi->has_ext_wake == 1)
+		del_timer(&tx_timer);
+	atomic_inc(&open_count);
+
+	return 0;
+#endif
 }
 
 /**
@@ -756,13 +762,16 @@ static int bluesleep_probe(struct platform_device *pdev)
 	}
 	if (ret  < 0) {
 		BT_ERR("Couldn't acquire BT_HOST_WAKE IRQ");
-		goto free_bt_ext_wake;
+		goto free_wake_lock;
 	}
 
 	return 0;
 
+free_wake_lock:
+	wake_lock_destroy(&bsi->wake_lock);
 free_bt_ext_wake:
-	gpio_free(bsi->ext_wake);
+	if (bsi->has_ext_wake)
+		gpio_free(bsi->ext_wake);
 free_bt_host_wake:
 	gpio_free(bsi->host_wake);
 free_bsi:
@@ -774,7 +783,8 @@ static int bluesleep_remove(struct platform_device *pdev)
 {
 	free_irq(bsi->host_wake_irq, NULL);
 	gpio_free(bsi->host_wake);
-	gpio_free(bsi->ext_wake);
+	if (bsi->has_ext_wake)
+		gpio_free(bsi->ext_wake);
 	wake_lock_destroy(&bsi->wake_lock);
 	kfree(bsi);
 	return 0;

@@ -75,6 +75,7 @@ static struct platform_device lbee9qmb_device = {
 
 void x3_bt_rfkill(void)
 {
+#if 0
 	tegra_gpio_enable(GPIO_BT_RESET);
 	pr_debug("%s : tegra_gpio_enable(reset) [%d]", __func__, GPIO_BT_RESET);
 
@@ -82,7 +83,8 @@ void x3_bt_rfkill(void)
 	pr_debug("%s : tegra_gpio_enable(btwake) [%d]", __func__, GPIO_BT_WAKE);
 
 	tegra_gpio_enable(GPIO_BT_HOSTWAKE);
-	pr_debug("%s : tegra_gpio_enable(hostwake) [%d]", __func__, GPIO_BT_HOSTWAKE);
+	printk(KERN_DEBUG "%s : tegra_gpio_enable(hostwake) [%d]", __func__, GPIO_BT_HOSTWAKE);
+#endif
 
 	if (platform_device_register(&lbee9qmb_device))
 		pr_debug("%s: lbee9qmb_device registration failed \n", __func__);
@@ -136,8 +138,11 @@ void __init x3_setup_bluesleep(void)
 	}
 
 	bluesleep_setup_uart_port(&tegra_uartc_device);
+
+#if 0
 	tegra_gpio_enable(TEGRA_GPIO_PS4);
 	tegra_gpio_enable(TEGRA_GPIO_PS3);
+#endif
 
 	return;
 
