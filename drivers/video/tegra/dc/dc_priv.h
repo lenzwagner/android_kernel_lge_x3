@@ -26,10 +26,6 @@
 #endif
 #include <mach/powergate.h>
 
-#ifdef CONFIG_TEGRA_DC_CMU
-	struct tegra_dc_cmu		cmu;
-#endif
-
 static inline void tegra_dc_io_start(struct tegra_dc *dc)
 {
 	nvhost_module_busy_ext(dc->ndev);

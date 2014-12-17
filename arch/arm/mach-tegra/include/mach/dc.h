@@ -392,6 +392,13 @@ struct tegra_dc_sd_agg_priorities {
 	u8 agg[4];
 };
 
+struct tegra_dc_sd_window {
+	u16 h_position;
+	u16 v_position;
+	u16 h_size;
+	u16 v_size;
+};
+
 struct tegra_dc_sd_settings {
 	unsigned enable;
 	bool use_auto_pwm;
@@ -412,6 +419,19 @@ struct tegra_dc_sd_settings {
 	bool use_vid_luma;
 	struct tegra_dc_sd_rgb coeff;
 
+	bool k_limit_enable;
+	u16 k_limit;
+
+	bool sd_window_enable;
+	struct tegra_dc_sd_window sd_window;
+
+	bool soft_clipping_enable;
+	u8 soft_clipping_threshold;
+
+	bool smooth_k_enable;
+	u16 smooth_k_incr;
+
+	bool sd_proc_control;
 	bool soft_clipping_correction;
 	bool use_vpulse2;
 
@@ -554,6 +574,24 @@ struct tegra_dc_lut {
 	u8 r[256];
 	u8 g[256];
 	u8 b[256];
+};
+
+struct tegra_dc_cmu_csc {
+	u16 krr;
+	u16 kgr;
+	u16 kbr;
+	u16 krg;
+	u16 kgg;
+	u16 kbg;
+	u16 krb;
+	u16 kgb;
+	u16 kbb;
+};
+
+struct tegra_dc_cmu {
+	u16 lut1[256];
+	struct tegra_dc_cmu_csc csc;
+	u8 lut2[960];
 };
 
 struct tegra_dc_win {
