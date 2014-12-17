@@ -4,6 +4,7 @@
  *
  * Copyright (C) 2011 Samsung Electronics
  *	MyungJoo Ham <myungjoo.ham@samsung.com>
+ * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -469,6 +470,19 @@ static ssize_t show_governor(struct device *dev,
 static ssize_t show_freq(struct device *dev,
 			 struct device_attribute *attr, char *buf)
 {
+	unsigned long freq;
+	struct devfreq *devfreq = to_devfreq(dev);
+
+	if (devfreq->profile->get_cur_freq &&
+		!devfreq->profile->get_cur_freq(devfreq->dev.parent, &freq))
+			return sprintf(buf, "%lu\n", freq);
+
+	return sprintf(buf, "%lu\n", devfreq->previous_freq);
+}
+
+static ssize_t show_target_freq(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
 	return sprintf(buf, "%lu\n", to_devfreq(dev)->previous_freq);
 }
 
@@ -590,6 +604,7 @@ static ssize_t show_max_freq(struct device *dev, struct device_attribute *attr,
 static struct device_attribute devfreq_attrs[] = {
 	__ATTR(governor, S_IRUGO, show_governor, NULL),
 	__ATTR(cur_freq, S_IRUGO, show_freq, NULL),
+	__ATTR(target_freq, S_IRUGO, show_target_freq, NULL),
 	__ATTR(central_polling, S_IRUGO, show_central_polling, NULL),
 	__ATTR(polling_interval, S_IRUGO | S_IWUSR, show_polling_interval,
 	       store_polling_interval),

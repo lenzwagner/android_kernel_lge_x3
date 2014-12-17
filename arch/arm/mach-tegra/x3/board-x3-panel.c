@@ -648,6 +648,9 @@ static struct tegra_dc_platform_data x3_disp1_pdata = {
 	.default_out	= &x3_disp1_out,
 	.emc_clk_rate	= 300000000,
 	.fb		= &x3_fb_data,
+#ifdef CONFIG_TEGRA_DC_CMU
+	.cmu_enable	= 1,
+#endif
 };
 
 static struct platform_device x3_disp1_device = {
