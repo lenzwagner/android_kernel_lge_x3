@@ -963,8 +963,6 @@ static void tegra_dc_hdmi_detect_worker(struct work_struct *work)
 	/* board files are expected to allow multiple calls to hotplug_init() */
 	tegra_dc_hotplug_init(dc);
 
-	tegra_dc_enable(dc);
-	msleep(5);
 	if (!tegra_dc_hdmi_detect(dc) && dc->connected) {
 		dev_dbg(&dc->ndev->dev, "HDMI disconnect\n");
 		dc->connected = false;
@@ -1122,16 +1120,6 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 	}
 #endif
 
-	/* TODO: support non-hotplug */
-	if (request_irq(gpio_to_irq(dc->out->hotplug_gpio), tegra_dc_hdmi_irq,
-			IRQF_DISABLED | IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-			dev_name(&dc->ndev->dev), dc)) {
-		dev_err(&dc->ndev->dev, "hdmi: request_irq %d failed\n",
-			gpio_to_irq(dc->out->hotplug_gpio));
-		err = -EBUSY;
-		goto err_put_clock;
-	}
-
 	/* Get the pointer of board file settings */
 	hdmi_out = dc->pdata->default_out->hdmi_out;
 	if (hdmi_out)
@@ -1141,7 +1129,7 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 	if (IS_ERR_OR_NULL(hdmi->edid)) {
 		dev_err(&dc->ndev->dev, "hdmi: can't create edid\n");
 		err = PTR_ERR(hdmi->edid);
-		goto err_free_irq;
+		goto err_put_clock;
 	}
 
 #ifdef CONFIG_TEGRA_NVHDCP
@@ -1196,14 +1184,25 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 
 	tegra_dc_hdmi_debug_create(hdmi);
 
+	/* TODO: support non-hotplug */
+	if (request_irq(gpio_to_irq(dc->out->hotplug_gpio), tegra_dc_hdmi_irq,
+		IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+		dev_name(&dc->ndev->dev), dc)) {
+		dev_err(&dc->ndev->dev, "hdmi: request_irq %d failed\n",
+			gpio_to_irq(dc->out->hotplug_gpio));
+		err = -EBUSY;
+		goto err_nvhdcp_destroy;
+	}
+
 	return 0;
 
+err_nvhdcp_destroy:
+	if (hdmi->nvhdcp)
+		tegra_nvhdcp_destroy(hdmi->nvhdcp);
 #ifdef CONFIG_TEGRA_NVHDCP
 err_edid_destroy:
-	tegra_edid_destroy(hdmi->edid);
 #endif
-err_free_irq:
-	free_irq(gpio_to_irq(dc->out->hotplug_gpio), dc);
+	tegra_edid_destroy(hdmi->edid);
 err_put_clock:
 #if !defined(CONFIG_ARCH_TEGRA_2x_SOC)
 	if (!IS_ERR_OR_NULL(hdmi->hda2hdmi_clk))

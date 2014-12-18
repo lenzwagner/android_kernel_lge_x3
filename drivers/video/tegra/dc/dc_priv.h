@@ -61,6 +61,13 @@ static inline void tegra_dc_writel(struct tegra_dc *dc, unsigned long val,
 	writel(val, dc->base + reg * 4);
 }
 
+static inline void tegra_dc_power_on(struct tegra_dc *dc)
+{
+	tegra_dc_writel(dc, PW0_ENABLE | PW1_ENABLE | PW2_ENABLE | PW3_ENABLE |
+					PW4_ENABLE | PM0_ENABLE | PM1_ENABLE,
+					DC_CMD_DISPLAY_POWER_CONTROL);
+}
+
 static inline void _tegra_dc_write_table(struct tegra_dc *dc, const u32 *table,
 					 unsigned len)
 {
@@ -169,21 +176,41 @@ static inline bool tegra_dc_is_yuv_planar(int fmt)
 	return false;
 }
 
-static inline void tegra_dc_unmask_interrupt(struct tegra_dc *dc, u32 int_val)
+static inline u32 tegra_dc_unmask_interrupt(struct tegra_dc *dc, u32 int_val)
 {
 	u32 val;
 
 	val = tegra_dc_readl(dc, DC_CMD_INT_MASK);
-	val |= int_val;
-	tegra_dc_writel(dc, val, DC_CMD_INT_MASK);
+	tegra_dc_writel(dc, val | int_val, DC_CMD_INT_MASK);
+	return val;
 }
 
-static inline void tegra_dc_mask_interrupt(struct tegra_dc *dc, u32 int_val)
+static inline u32 tegra_dc_flush_interrupt(struct tegra_dc *dc, u32 int_val)
+{
+	u32 val;
+	unsigned long flag;
+
+	local_irq_save(flag);
+
+	val = tegra_dc_readl(dc, DC_CMD_INT_STATUS);
+	tegra_dc_writel(dc, (val | int_val), DC_CMD_INT_STATUS);
+
+	local_irq_restore(flag);
+
+	return val;
+}
+
+static inline u32 tegra_dc_mask_interrupt(struct tegra_dc *dc, u32 int_val)
 {
 	u32 val;
 
 	val = tegra_dc_readl(dc, DC_CMD_INT_MASK);
-	val &= ~int_val;
+	tegra_dc_writel(dc, val & ~int_val, DC_CMD_INT_MASK);
+	return val;
+}
+
+static inline void tegra_dc_restore_interrupt(struct tegra_dc *dc, u32 val)
+{
 	tegra_dc_writel(dc, val, DC_CMD_INT_MASK);
 }
 

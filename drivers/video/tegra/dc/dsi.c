@@ -1681,8 +1681,7 @@ static int tegra_dsi_wait_frame_end(struct tegra_dc *dc,
 	INIT_COMPLETION(dc->frame_end_complete);
 
 	/* unmask frame end interrupt */
-	val = tegra_dc_readl(dc, DC_CMD_INT_MASK);
-	tegra_dc_writel(dc, val | FRAME_END_INT, DC_CMD_INT_MASK);
+	val = tegra_dc_unmask_interrupt(dc, FRAME_END_INT);
 
 	/* wait for frame_end completion.
 	 * timeout is 2 frame duration to accomodate for
@@ -2754,14 +2753,12 @@ static void tegra_dc_dsi_idle_work(struct work_struct *work)
 		tegra_dsi_host_suspend(dsi->dc);
 }
 
-int tegra_dsi_write_data(struct tegra_dc *dc,
+static int tegra_dsi_write_data_nosync(struct tegra_dc *dc,
 			struct tegra_dc_dsi_data *dsi,
 			u8 *pdata, u8 data_id, u16 data_len)
 {
 	int err = 0;
 	struct dsi_status *init_status;
-
-	tegra_dc_io_start(dc);
 
 	init_status = tegra_dsi_prepare_host_transmission(
 				dc, dsi, DSI_LP_OP_WRITE);
@@ -2776,10 +2773,27 @@ fail:
 	err = tegra_dsi_restore_state(dc, dsi, init_status);
 	if (err < 0)
 		dev_err(&dc->ndev->dev, "Failed to restore prev state\n");
+
+	return err;
+}
+
+int tegra_dsi_write_data(struct tegra_dc *dc,
+			struct tegra_dc_dsi_data *dsi,
+			u8 *pdata, u8 data_id, u16 data_len)
+{
+	int err;
+
+	tegra_dc_io_start(dc);
+	tegra_dc_dsi_hold_host(dc);
+
+	err = tegra_dsi_write_data_nosync(dc, dsi, pdata, data_id, data_len);
+
+	tegra_dc_dsi_release_host(dc);
 	tegra_dc_io_end(dc);
 
 	return err;
 }
+
 EXPORT_SYMBOL(tegra_dsi_write_data);
 
 static int tegra_dsi_send_panel_cmd(struct tegra_dc *dc,
@@ -2808,7 +2822,7 @@ static int tegra_dsi_send_panel_cmd(struct tegra_dc *dc,
 						dsi,
 						cur_cmd->sp_len_dly.frame_cnt);
 		} else {
-			err = tegra_dsi_write_data(dc, dsi,
+			err = tegra_dsi_write_data_nosync(dc, dsi,
 						cur_cmd->pdata,
 						cur_cmd->data_id,
 						cur_cmd->sp_len_dly.data_len);
@@ -2934,9 +2948,8 @@ int tegra_dsi_start_host_cmd_v_blank_dcs(struct tegra_dc_dsi_data * dsi,
 		return -EINVAL;
 
 	mutex_lock(&dsi->lock);
-	tegra_dc_dsi_hold_host(dc);
-
 	tegra_dc_io_start(dc);
+	tegra_dc_dsi_hold_host(dc);
 
 #if DSI_USE_SYNC_POINTS
 	atomic_set(&dsi_syncpt_rst, 1);
@@ -2960,8 +2973,8 @@ int tegra_dsi_start_host_cmd_v_blank_dcs(struct tegra_dc_dsi_data * dsi,
 	tegra_dsi_writel(dsi, val, DSI_INIT_SEQ_CONTROL);
 
 fail:
-	tegra_dc_io_end(dc);
 	tegra_dc_dsi_release_host(dc);
+	tegra_dc_io_end(dc);
 	mutex_unlock(&dsi->lock);
 	return err;
 
@@ -2976,9 +2989,8 @@ void tegra_dsi_stop_host_cmd_v_blank_dcs(struct tegra_dc_dsi_data * dsi)
 	u32 cnt;
 
 	mutex_lock(&dsi->lock);
-	tegra_dc_dsi_hold_host(dc);
-
 	tegra_dc_io_start(dc);
+	tegra_dc_dsi_hold_host(dc);
 
 	if (atomic_read(&dsi_syncpt_rst)) {
 		tegra_dsi_wait_frame_end(dc, dsi);
@@ -2992,9 +3004,9 @@ void tegra_dsi_stop_host_cmd_v_blank_dcs(struct tegra_dc_dsi_data * dsi)
 	for (cnt = 0; cnt < 8; cnt++)
 		tegra_dsi_writel(dsi, 0, DSI_INIT_SEQ_DATA_0 + cnt);
 
+	tegra_dc_dsi_release_host(dc);
 	tegra_dc_io_end(dc);
 
-	tegra_dc_dsi_release_host(dc);
 	mutex_unlock(&dsi->lock);
 }
 EXPORT_SYMBOL(tegra_dsi_stop_host_cmd_v_blank_dcs);
@@ -4161,6 +4173,7 @@ static int tegra_dsi_host_resume(struct tegra_dc *dc)
 			"DSI host resume failed\n");
 		goto fail;
 	}
+
 	tegra_dsi_start_dc_stream(dc, dsi);
 	dsi->host_suspended = false;
 fail:
