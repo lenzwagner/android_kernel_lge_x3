@@ -269,7 +269,7 @@ __setup("prox_cal_data=", prox_cal_data);
 
 static int apds990x_set_command(struct i2c_client *client, int command)
 {
-	struct apds990x_data *data = i2c_get_clientdata(client);
+	//struct apds990x_data *data = i2c_get_clientdata(client);
 	int ret;
 	int clearInt;
 
@@ -1035,12 +1035,11 @@ static ssize_t apds990x_store_run_calibration(struct device *dev,
 
 	ret = apds990x_Run_Cross_talk_Calibration(client);
 
-    //Store Calibration data
-    if(  0 <= ret && ret < 720 )
-    {
-        DEBUG_MSG("%s Succes cross-talk :  %d, ppcount(%d), is_white(%d) \n", __func__, ret, data->ppcount, data->is_white);
-        lge_nvdata_write(LGE_NVDATA_PROXIMITY_PPCOUNT_OFFSET, &ppcount_val, 1);
-        lge_nvdata_write(LGE_NVDATA_PROXIMITY_CROSS_TALK_CALIBRATION_OFFSET, &ret, 2);
+	// Store Calibration data
+	if (0 <= ret && ret < 720)  {
+		DEBUG_MSG("%s Succes cross-talk :  %d, ppcount(%d), is_white(%d) \n", __func__, ret, data->ppcount, data->is_white);
+		lge_nvdata_write(LGE_NVDATA_PROXIMITY_PPCOUNT_OFFSET, (char *)&ppcount_val, 1);
+		lge_nvdata_write(LGE_NVDATA_PROXIMITY_CROSS_TALK_CALIBRATION_OFFSET, (char *)&ret, 2);
 		data->ps_cal_result = 1;
 
 #if defined(CHECK_WHITE_AND_BLACK_WIN)
@@ -1091,8 +1090,8 @@ static ssize_t apds990x_store_default_calibration(struct device *dev,
 	int default_cal = PS_DEFAULT_CROSSTALK_VAL;
 	int default_ppcount = PS_DEFAULT_PPCOUNT;
 
-	lge_nvdata_write(LGE_NVDATA_PROXIMITY_PPCOUNT_OFFSET, &default_ppcount, 1);
-	lge_nvdata_write(LGE_NVDATA_PROXIMITY_CROSS_TALK_CALIBRATION_OFFSET, &default_cal, 2);
+	lge_nvdata_write(LGE_NVDATA_PROXIMITY_PPCOUNT_OFFSET, (char *)&default_ppcount, 1);
+	lge_nvdata_write(LGE_NVDATA_PROXIMITY_CROSS_TALK_CALIBRATION_OFFSET, (char *)&default_cal, 2);
 	
 	if(default_cal < 0)
 	{
@@ -2210,3 +2209,5 @@ MODULE_VERSION(DRIVER_VERSION);
 
 module_init(apds990x_init);
 module_exit(apds990x_exit);
+
+module_i2c_driver(apds990x_driver);
