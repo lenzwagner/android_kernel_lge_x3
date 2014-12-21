@@ -30,6 +30,13 @@
 #include <linux/gpio.h>
 #include <linux/io.h>
 #include <linux/platform_data/tegra_bpc_mgmt.h>
+#include <linux/regulator/driver.h>
+#include <linux/regulator/gpio-regulator.h>
+
+#include <linux/regulator/gpio-switch-regulator.h>
+#include <linux/regulator/max77663-regulator.h>
+#include <linux/mfd/aat2870.h>
+#include <linux/mfd/max77663-core.h>
 #include <linux/kmsg_dump.h>
 
 
@@ -38,6 +45,7 @@
 #include <mach/irqs.h>
 #include <mach/pinmux.h>
 #include <linux/tps80031-charger.h>
+#include <mach/gpio-tegra.h>
 
 #include "../gpio-names.h"
 #include "../board.h"
@@ -277,34 +285,39 @@ static struct i2c_board_info __initdata x3_regulators[] = {
 };
 
 /************************ GPIO based switch regulator ****************/
+#if defined(CONFIG_REGULATOR_GPIO_SWITCH)
 
-static struct regulator_consumer_supply fixed_reg_ldo_mhl_en_supply[] = {
+static struct regulator_consumer_supply gpio_switch_ldo_mhl_en_supply[] = {
         REGULATOR_SUPPLY("avdd_vhdmi_vtherm", NULL),
 };
+static int gpio_switch_ldo_mhl_en_voltages[] = {3300};
 
-static struct regulator_consumer_supply fixed_reg_ldo_sensor_3v0_en_rev_e_supply[] = {
+static struct regulator_consumer_supply gpio_switch_ldo_sensor_3v0_en_rev_e_supply[] = {
         REGULATOR_SUPPLY("vdd_nct1008", NULL),
         REGULATOR_SUPPLY("vdd_ina230", NULL),
         REGULATOR_SUPPLY("vdd_3v_ldo", NULL),
 };
+static int gpio_switch_ldo_sensor_3v0_en_rev_e_voltages[] = {3000};
 
 
-static struct regulator_consumer_supply fixed_reg_ldo_sensor_1v8_en_rev_e_supply[] = {
+static struct regulator_consumer_supply gpio_switch_ldo_sensor_1v8_en_rev_e_supply[] = {
         REGULATOR_SUPPLY("vlg_1v8_ldo", NULL),
 };
+static int gpio_switch_ldo_sensor_1v8_en_rev_e_voltages[] = {1800};
 
 
 // +3V3_TPS_VFUSE
 static struct
-regulator_consumer_supply fixed_reg_ldo_vdd_fuse_3v3_en_supply[] = {
+regulator_consumer_supply gpio_switch_ldo_vdd_fuse_3v3_en_supply[] = {
         REGULATOR_SUPPLY("vdd_fuse", NULL),
 };
+static int gpio_switch_ldo_vdd_fuse_3v3_en_voltages[] = {3300};
 
 
 /* Macro for defining gpio switch regulator sub device data */
 #define GREG_INIT(_id, _name, _input_supply, _gpio_nr, _active_low, \
 			_init_state, _pg, _enable, _disable)		\
-	static struct fixed_reg_regulator_subdev_data gpio_pdata_##_name =  \
+	static struct gpio_switch_regulator_subdev_data gpio_pdata_##_name =  \
 	{								\
 		.regulator_name	= "gpio-switch-"#_name,			\
 		.input_supply	= _input_supply,			\
@@ -313,11 +326,11 @@ regulator_consumer_supply fixed_reg_ldo_vdd_fuse_3v3_en_supply[] = {
 		.pin_group	= _pg,					\
 		.active_low	= _active_low,				\
 		.init_state	= _init_state,				\
-		.voltages	= fixed_reg_##_name##_voltages,	\
-		.n_voltages	= ARRAY_SIZE(fixed_reg_##_name##_voltages), \
+		.voltages	= gpio_switch_##_name##_voltages,	\
+		.n_voltages	= ARRAY_SIZE(gpio_switch_##_name##_voltages), \
 		.num_consumer_supplies =				\
-				ARRAY_SIZE(fixed_reg_##_name##_supply), \
-		.consumer_supplies = fixed_reg_##_name##_supply,	\
+				ARRAY_SIZE(gpio_switch_##_name##_supply), \
+		.consumer_supplies = gpio_switch_##_name##_supply,	\
 		.constraints = {					\
 			.valid_modes_mask = (REGULATOR_MODE_NORMAL |	\
 					REGULATOR_MODE_STANDBY),	\
@@ -330,7 +343,7 @@ regulator_consumer_supply fixed_reg_ldo_vdd_fuse_3v3_en_supply[] = {
 	}
 
 
-/* Macro for defining fixed regulator sub device data */
+/* Macro for defining fixed regulator sub device data
 #define FIXED_REG(_id, _name, _input_supply, _gpio_nr, _active_high,	\
 			_millivolts, _boot_state, _sdelay)		\
 	static struct regulator_init_data ri_data_##_name =		\
@@ -364,7 +377,7 @@ regulator_consumer_supply fixed_reg_ldo_vdd_fuse_3v3_en_supply[] = {
 			.platform_data = &fixed_reg_##_name##_pdata,	\
 		},							\
 	}
-/* "" */
+ */
 
 #define MHL_LDO_EN      TEGRA_GPIO_PV2
 #define THERM_LDO_EN	TEGRA_GPIO_PK6
@@ -374,29 +387,50 @@ regulator_consumer_supply fixed_reg_ldo_vdd_fuse_3v3_en_supply[] = {
 
 #define VFUSE_LDO_EN	TEGRA_GPIO_PK7
 
-FIXED_REG(0, ldo_mhl_en, NULL, MHL_LDO_EN, true, 3300, 0, 0);
-FIXED_REG(1, ldo_sensor_3v0_en_rev_e, NULL, SENSOR_LDO_EN_REV_E, true, 3000, 0, 0);
-FIXED_REG(2, ldo_sensor_1v8_en_rev_e, NULL, SENSOR_LDO_EN2_REV_E, true, 1800, 0, 0);
-FIXED_REG(3, ldo_vdd_fuse_3v3_en, NULL, VFUSE_LDO_EN, true, 3300, 0, 0);
+GREG_INIT(0, ldo_mhl_en, NULL, MHL_LDO_EN, false, 0, 0, 0, 0);
+GREG_INIT(1, ldo_sensor_3v0_en_rev_e, NULL, SENSOR_LDO_EN_REV_E, false, 0, 0, 0, 0);
+GREG_INIT(2, ldo_sensor_1v8_en_rev_e, NULL, SENSOR_LDO_EN2_REV_E, false, 0, 0, 0, 0);
+GREG_INIT(3, ldo_vdd_fuse_3v3_en, NULL, VFUSE_LDO_EN, false, 0, 0, 0, 0);
 
-#define ADD_FIXED_REG(_name)	(&fixed_reg_##_name##_dev)
-static struct platform_device *lge_power_devices[] = {
-	ADD_FIXED_REG(ldo_mhl_en),
-	ADD_FIXED_REG(ldo_sensor_3v0_en_rev_e),
-	ADD_FIXED_REG(ldo_sensor_1v8_en_rev_e),
-	ADD_FIXED_REG(ldo_vdd_fuse_3v3_en),
+#define ADD_GPIO_REG(_name)	(&gpio_pdata_##_name)
+
+static struct gpio_switch_regulator_subdev_data *gswitch_subdevs_rev_E[] = {
+	ADD_GPIO_REG(ldo_mhl_en),
+	ADD_GPIO_REG(ldo_sensor_3v0_en_rev_e),
+	ADD_GPIO_REG(ldo_sensor_1v8_en_rev_e),
+	ADD_GPIO_REG(ldo_vdd_fuse_3v3_en),
 };
 
-static int __init lge_x3_init_regulators(void)
-{
-	int nregs;
-	struct platform_device **regulator_devices;
+static struct gpio_switch_regulator_platform_data  gswitch_pdata_rev_E = {
+	.num_subdevs	= ARRAY_SIZE(gswitch_subdevs_rev_E),
+	.subdevs	= gswitch_subdevs_rev_E,
+};
 
+static struct platform_device gswitch_regulator_pdata_rev_E = {
+	.name	= "gpio-switch-regulator",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &gswitch_pdata_rev_E,
+	},
+};
+
+
+#if 0
+	int nregs;
 	regulator_devices = lge_power_devices;
 	nregs = ARRAY_SIZE(lge_power_devices);
 
 	return platform_add_devices(regulator_devices, nregs);
 }
+#endif
+
+static int __init x3_gpio_switch_regulator_init_rev_E(void)
+{
+	return platform_device_register(&gswitch_regulator_pdata_rev_E);
+}
+
+#endif // CONFIG_REGULATOR_GPIO_SWITCH
+
 static void x3_power_off(void)
 {
 	int ret;
@@ -430,7 +464,11 @@ int __init x3_regulator_init(void)
 	i2c_register_board_info(4, x3_regulators,
 			ARRAY_SIZE(x3_regulators));
 
-	lge_x3_init_regulators();
+#if defined(CONFIG_REGULATOR_GPIO_SWITCH)
+			x3_gpio_switch_regulator_init_rev_E();
+#else
+//	lge_x3_init_regulators();
+#endif
 
 	pm_power_off = x3_power_off;
 	return 0;
@@ -459,7 +497,7 @@ static struct tegra_suspend_platform_data x3_suspend_data = {
 
 	.board_suspend = x3_board_suspend,
 	.board_resume = x3_board_resume,
-#ifdef CONFIG_TEGRA_LP1_950
+#ifdef CONFIG_TEGRA_LP1_LOW_COREVOLTAGE
 	.lp1_lowvolt_support = true,
 	.i2c_base_addr = TEGRA_I2C5_BASE,
 	.pmuslave_addr = 0x24,

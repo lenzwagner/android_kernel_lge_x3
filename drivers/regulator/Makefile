@@ -88,5 +88,5 @@ ccflags-$(CONFIG_REGULATOR_DEBUG) += -DDEBUG
 
 
 # LGE X3
-obj-$(CONFIG_REGULATOR_AAT2870) += aat2870-regulator.o
+obj-$(CONFIG_REGULATOR_GPIO_SWITCH) += gpio-switch-regulator.o
 obj-$(CONFIG_REGULATOR_CAM_SUBPMIC_LP8720)+= lp8720.o
