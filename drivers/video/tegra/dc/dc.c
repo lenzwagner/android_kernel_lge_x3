@@ -1618,6 +1618,11 @@ static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 	int need_disable = 0;
 
 	mutex_lock(&dc->lock);
+	if (!dc->enabled || !tegra_dc_is_powered(dc)) {
+		mutex_unlock(&dc->lock);
+		return IRQ_HANDLED;
+	}
+
 	clk_prepare_enable(dc->clk);
 	tegra_dc_io_start(dc);
 	tegra_dc_hold_dc_out(dc);
