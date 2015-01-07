@@ -32,6 +32,7 @@
 #include "tegra_usb_phy.h"
 #include "gpio-names.h"
 #include "fuse.h"
+#include "clock.h"
 
 #define USB_USBCMD		0x130
 #define   USB_USBCMD_RS		(1 << 0)
@@ -792,7 +793,7 @@ static void utmi_phy_enable_trking_data(struct tegra_usb_phy *phy)
 	if (init_done)
 		return;
 
-	clk_enable(phy->utmi_pad_clk);
+	tegra_clk_prepare_enable(phy->utmi_pad_clk);
 	/* Bias pad MASTER_ENABLE=1 */
 	val = readl(pmc_base + PMC_UTMIP_BIAS_MASTER_CNTRL);
 	val |= BIAS_MASTER_PROG_VAL;
@@ -843,7 +844,7 @@ static void utmi_phy_enable_trking_data(struct tegra_usb_phy *phy)
 	val = readl(pmc_base + PMC_UTMIP_TERM_PAD_CFG);
 	val = PMC_TCTRL_VAL(utmip_tctrl_val) | PMC_RCTRL_VAL(utmip_rctrl_val);
 	writel(val, pmc_base + PMC_UTMIP_TERM_PAD_CFG);
-	clk_disable(phy->utmi_pad_clk);
+	tegra_clk_disable_unprepare(phy->utmi_pad_clk);
 	init_done = true;
 }
 
@@ -1157,7 +1158,7 @@ static void utmi_phy_close(struct tegra_usb_phy *phy)
 	DBG("%s inst:[%d]\n", __func__, phy->inst);
 
 	/* Disable PHY clock valid interrupts while going into suspend*/
-	if (phy->pdata->u_data.host.hot_plug) {
+	if (phy->hot_plug) {
 		val = readl(base + USB_SUSP_CTRL);
 		val &= ~USB_PHY_CLK_VALID_INT_ENB;
 		writel(val, base + USB_SUSP_CTRL);
@@ -1177,7 +1178,7 @@ static int utmi_phy_pad_power_on(struct tegra_usb_phy *phy)
 
 	DBG("%s(%d) inst:[%d]\n", __func__, __LINE__, phy->inst);
 
-	clk_enable(phy->utmi_pad_clk);
+	tegra_clk_prepare_enable(phy->utmi_pad_clk);
 
 	spin_lock_irqsave(&utmip_pad_lock, flags);
 	utmip_pad_count++;
@@ -1190,7 +1191,7 @@ static int utmi_phy_pad_power_on(struct tegra_usb_phy *phy)
 
 	spin_unlock_irqrestore(&utmip_pad_lock, flags);
 
-	clk_disable(phy->utmi_pad_clk);
+	tegra_clk_disable_unprepare(phy->utmi_pad_clk);
 
 	return 0;
 }
@@ -1202,7 +1203,7 @@ static int utmi_phy_pad_power_off(struct tegra_usb_phy *phy)
 
 	DBG("%s(%d) inst:[%d]\n", __func__, __LINE__, phy->inst);
 
-	clk_enable(phy->utmi_pad_clk);
+	tegra_clk_prepare_enable(phy->utmi_pad_clk);
 	spin_lock_irqsave(&utmip_pad_lock, flags);
 
 	if (!utmip_pad_count) {
@@ -1218,7 +1219,7 @@ static int utmi_phy_pad_power_off(struct tegra_usb_phy *phy)
 	}
 out:
 	spin_unlock_irqrestore(&utmip_pad_lock, flags);
-	clk_disable(phy->utmi_pad_clk);
+	tegra_clk_disable_unprepare(phy->utmi_pad_clk);
 
 	return 0;
 }
@@ -1245,7 +1246,7 @@ static int utmi_phy_irq(struct tegra_usb_phy *phy)
 		remote_wakeup = true;
 	}
 
-	if (phy->pdata->u_data.host.hot_plug) {
+	if (phy->hot_plug) {
 		val = readl(base + USB_SUSP_CTRL);
 		if ((val  & USB_PHY_CLK_VALID_INT_STS)) {
 			val &= ~USB_PHY_CLK_VALID_INT_ENB |
@@ -1469,7 +1470,7 @@ static int utmi_phy_power_off(struct tegra_usb_phy *phy)
 		writel(val, base + USB_SUSP_CTRL);
 	}
 
-	if (!phy->pdata->u_data.host.hot_plug) {
+	if (!phy->hot_plug) {
 		val = readl(base + UTMIP_XCVR_CFG0);
 		val |= (UTMIP_FORCE_PD_POWERDOWN | UTMIP_FORCE_PD2_POWERDOWN |
 			 UTMIP_FORCE_PDZI_POWERDOWN);
@@ -1487,7 +1488,7 @@ static int utmi_phy_power_off(struct tegra_usb_phy *phy)
 
 	utmi_phy_pad_power_off(phy);
 
-	if (phy->pdata->u_data.host.hot_plug) {
+	if (phy->hot_plug) {
 		bool enable_hotplug = true;
 		/* if it is OTG port then make sure to enable hot-plug feature
 		   only if host adaptor is connected, i.e id is low */
@@ -1520,7 +1521,7 @@ static int utmi_phy_power_off(struct tegra_usb_phy *phy)
 	val |= HOSTPC1_DEVLC_PHCD;
 	writel(val, base + HOSTPC1_DEVLC);
 
-	if (!phy->pdata->u_data.host.hot_plug) {
+	if (!phy->hot_plug) {
 		val = readl(base + USB_SUSP_CTRL);
 		val |= UTMIP_RESET;
 		writel(val, base + USB_SUSP_CTRL);
@@ -2107,7 +2108,7 @@ static void uhsic_phy_restore_start(struct tegra_usb_phy *phy)
 	/* check whether we wake up from the remote resume */
 #if 0 //NV Patch (1175097) - [X3/AP33/JB/USB-HSIC] reproduce USB protocol error (-71) [START]
 	if (UHSIC_WALK_PTR_VAL & val) {
-		phy->remote_wakeup = true;
+		phy->pmc_remote_wakeup = true;
 	} else {
 		DBG("%s(%d): setting pretend connect\n", __func__, __LINE__);
 		val = readl(base + UHSIC_CMD_CFG0);

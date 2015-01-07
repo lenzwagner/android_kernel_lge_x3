@@ -160,8 +160,8 @@ void otg_switch (bool enable)
 		otg_mode = 1;
 	} else {
 		pr_info("MUIC OTG: otg_switch disable\n");
-		retain_mode = RETAIN_NO;
-		usb_host_status_notifier_func(0);
+//		retain_mode = RETAIN_NO;
+//		usb_host_status_notifier_func(0);
 		otg_mode = 0;
 		queue_work(muic_wq, &muic_work);
 	}
@@ -518,8 +518,8 @@ void check_charging_mode(void)
 		if ((value & IDNO) == IDNO_0010 || 
 			(value & IDNO) == IDNO_0100 ||
 			(value & IDNO) == IDNO_1001 ||
-			(value & IDNO) == IDNO_1010
-			|| retain_mode == RETAIN_AP_USB)
+			(value & IDNO) == IDNO_1010 ||
+			(boot_retain_mode == RETAIN_AP_USB && retain_mode == RETAIN_AP_USB))	//                                                                                                
 			charging_mode = CHARGING_FACTORY;
 		else if (value & CHGDET) 
 			charging_mode = CHARGING_LG_TA;
@@ -649,8 +649,8 @@ int muic_send_charger_type(TYPE_CHARGING_MODE mode)
 		case CHARGING_FACTORY:
 			psy = power_supply_get_by_name("factory");
 			value.intval = POWER_SUPPLY_TYPE_FACTORY;
-			if(otg_mode)
-				usb_host_status_notifier_func(1);
+	//		if(otg_mode)
+//				usb_host_status_notifier_func(1);
 			break;
 
 		case CHARGING_NONE:

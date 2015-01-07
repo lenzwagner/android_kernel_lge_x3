@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010 Google, Inc.
- * Copyright (c) 2010-2012, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2010-2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -36,6 +36,16 @@ enum tegra_usb_phy_interface {
 };
 
 /**
+ * defines the various ID cable detection types
+ */
+enum tegra_usb_id_detection {
+	TEGRA_USB_ID = 0,
+	TEGRA_USB_PMU_ID = 1,
+	TEGRA_USB_GPIO_ID = 2,
+	TEGRA_USB_VIRTUAL_ID = 3,
+};
+
+/**
  * configuration structure for setting up utmi phy
  */
 struct tegra_utmi_config {
@@ -50,6 +60,7 @@ struct tegra_utmi_config {
 	u8 xcvr_use_lsb;
 	u8 xcvr_use_fuses;
 	u8 vbus_oc_map;
+	unsigned char xcvr_hsslew_lsb:2;
 };
 
 /**
@@ -92,9 +103,9 @@ struct tegra_usb_phy_platform_ops {
 	void (*pre_phy_on)(void);
 	void (*post_phy_on)(void);
 	void (*port_power)(void);
-//                 
+#ifdef CONFIG_MACH_X3
 	int (*usb_phy_ready)(void);
-//                 
+#endif
 	void (*close)(void);
 };
 
@@ -113,10 +124,10 @@ struct tegra_usb_dev_mode_data {
  */
 struct tegra_usb_host_mode_data {
 	int vbus_gpio;
-	const char *vbus_reg;
 	bool hot_plug;
 	bool remote_wakeup_supported;
 	bool power_off_on_suspend;
+	bool turn_off_vbus_on_lp0;
 };
 
 /**
@@ -125,8 +136,9 @@ struct tegra_usb_host_mode_data {
 struct tegra_usb_platform_data {
 	bool port_otg;
 	bool has_hostpc;
-	bool builtin_host_disabled;
 	bool unaligned_dma_buf_supported;
+	bool support_pmu_vbus;
+	enum tegra_usb_id_detection id_det_type;
 	enum tegra_usb_phy_interface phy_intf;
 	enum tegra_usb_operation_mode op_mode;
 
@@ -150,6 +162,12 @@ struct tegra_usb_platform_data {
 struct tegra_usb_otg_data {
 	struct platform_device *ehci_device;
 	struct tegra_usb_platform_data *ehci_pdata;
+	struct platform_device *xhci_device;
+	struct tegra_xusb_platform_data *xhci_pdata;
+	char *vbus_extcon_dev_name;
+	char *id_extcon_dev_name;
+	int id_det_gpio;
+	bool is_xhci;
 };
 
 #endif /* _TEGRA_USB_H_ */

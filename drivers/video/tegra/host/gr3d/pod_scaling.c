@@ -39,9 +39,6 @@
 #include <linux/export.h>
 #include <linux/slab.h>
 
-#define CREATE_TRACE_POINTS
-#include <trace/events/nvhost_podgov.h>
-
 #include <mach/clk.h>
 #include <mach/hardware.h>
 
@@ -50,6 +47,10 @@
 #include "scale3d.h"
 #include "pod_scaling.h"
 #include "dev.h"
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/nvhost_podgov.h>
+
 
 /* time frame for load and hint tracking - when events come in at a larger
  * interval, this probably indicates the current estimates are stale
@@ -733,16 +734,18 @@ void nvhost_scale3d_set_throughput_hint(int hint)
 	podgov->hint_avg = avg_hint;
 
 	/* set the target using avg_hint and avg_idle */
-	target = curr;
 	if (avg_hint < podgov->p_hint_lo_limit) {
 		target = freqlist_up(podgov, curr, 1);
+	} else if (avg_hint > podgov->p_hint_hi_limit) {
+		target = freqlist_down(podgov, curr, 1);
 	} else {
 		scale_score = avg_idle + avg_hint;
 		if (scale_score > podgov->p_scaledown_limit)
 			target = freqlist_down(podgov, curr, 1);
-		else if (scale_score < podgov->p_scaleup_limit
-				&& hint < podgov->p_hint_hi_limit)
+		else if (scale_score < podgov->p_scaleup_limit)
 			target = freqlist_up(podgov, curr, 1);
+		else
+			target = curr;
 	}
 
 	/* clamp and apply target */
@@ -1071,23 +1074,14 @@ static int nvhost_pod_init(struct devfreq *df)
 	podgov->p_adjust = 0;
 	podgov->block = 0;
 	podgov->p_use_throughput_hint = 1;
-	if (tegra_get_chipid() == TEGRA_CHIPID_TEGRA11) {
-		podgov->idle_min = podgov->p_idle_min = 400;
-		podgov->idle_max = podgov->p_idle_max = 500;
-		podgov->p_hint_lo_limit = 500;
-		podgov->p_hint_hi_limit = 997;
-		podgov->p_scaleup_limit = 1100;
-		podgov->p_scaledown_limit = 1300;
-		podgov->p_smooth = 3;
-	} else {
-		podgov->idle_min = podgov->p_idle_min = 100;
-		podgov->idle_max = podgov->p_idle_max = 150;
-		podgov->p_hint_lo_limit = 800;
-		podgov->p_hint_hi_limit = 1015;
-		podgov->p_scaleup_limit = 1275;
-		podgov->p_scaledown_limit = 1475;
-		podgov->p_smooth = 7;
-	}
+	podgov->idle_min = podgov->p_idle_min = 100;
+	podgov->idle_max = podgov->p_idle_max = 150;
+	podgov->p_hint_lo_limit = 800;
+	podgov->p_hint_hi_limit = 1015;
+	podgov->p_scaleup_limit = 1275;
+	podgov->p_scaledown_limit = 1475;
+	podgov->p_smooth = 7;
+	
 	podgov->p_estimation_window = 10000;
 	podgov->adjustment_type = ADJUSTMENT_DEVICE_REQ;
 	podgov->p_user = 0;
@@ -1139,8 +1133,10 @@ static int nvhost_pod_init(struct devfreq *df)
 			pr_err("%s: too many frequencies\n", __func__);
 			break;
 		}
-		rounded_rate =
-			clk_round_rate(clk_get_parent(pdata->clk[0]), rate);
+		rounded_rate = clk_round_rate(clk_get_parent(pdata->clk[0]), rate);
+		if (podgov->freq_count &&
+		    freqs[podgov->freq_count - 1] == rounded_rate)
+			break;
 		freqs[podgov->freq_count++] = rounded_rate;
 		rate = rounded_rate + 2000;
 	}
