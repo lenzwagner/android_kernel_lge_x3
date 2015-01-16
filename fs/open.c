@@ -461,20 +461,7 @@ SYSCALL_DEFINE1(chroot, const char __user *, filename)
 		goto dput_and_out;
 
 	error = -EPERM;
-	/*
-	 * Chroot is dangerous unless no_new_privs is set, and we also
-	 * don't want to allow unprivileged users to break out of chroot
-	 * jail with another chroot call.
-	 *
-	 * We therefore allow chroot under one of two circumstances:
-	 *  a) no_new_privs (so setuid and similar programs can't be
-	 *     exploited), fs not shared (to avoid bypassing no_new_privs),
-	 *     and not already chrooted (so there's no chroot jail to break
-	 *     out of)
-	 *  b) CAP_SYS_CHROOT
-	 */
-	if (!(current->no_new_privs && fs->users == 1 && !is_chrooted(fs)) &&
-	    !capable(CAP_SYS_CHROOT))
+	if (!capable(CAP_SYS_CHROOT))
 		goto dput_and_out;
 	error = security_path_chroot(&path);
 	if (error)
