@@ -127,7 +127,7 @@ static const struct attribute_group ep93xx_rtc_sysfs_files = {
 	.attrs	= ep93xx_rtc_attrs,
 };
 
-static int __init ep93xx_rtc_probe(struct platform_device *pdev)
+static int ep93xx_rtc_probe(struct platform_device *pdev)
 {
 	struct ep93xx_rtc *ep93xx_rtc;
 	struct resource *res;
@@ -174,7 +174,7 @@ exit:
 	return err;
 }
 
-static int __exit ep93xx_rtc_remove(struct platform_device *pdev)
+static int ep93xx_rtc_remove(struct platform_device *pdev)
 {
 	struct ep93xx_rtc *ep93xx_rtc = platform_get_drvdata(pdev);
 
@@ -194,7 +194,8 @@ static struct platform_driver ep93xx_rtc_driver = {
 		.name	= "ep93xx-rtc",
 		.owner	= THIS_MODULE,
 	},
-	.remove		= __exit_p(ep93xx_rtc_remove),
+	.probe		= ep93xx_rtc_probe,
+	.remove		= ep93xx_rtc_remove,
 };
 
 static int __init ep93xx_rtc_init(void)

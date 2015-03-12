@@ -148,7 +148,7 @@ static int bootbatteryVerified = 1;
 #endif
 
 #ifdef CONFIG_GPU_OVERCLOCK
-static int pmu_core_edp = 1250;	/* default 1.2V EDP limit */
+static int pmu_core_edp = 1200;	/* default 1.2V EDP limit */
 #else
 static int pmu_core_edp = 1200;	/* default 1.2V EDP limit */
 #endif
@@ -185,7 +185,7 @@ void tegra_assert_system_reset(char mode, const char *cmd)
 	pr_info("tegra_assert_system_reset() ignored.....");
 	do { } while (1);
 #else
-	void __iomem *reset = IO_ADDRESS(TEGRA_PMC_BASE + 0);
+	void __iomem *reset = IO_ADDRESS(TEGRA_PMC_BASE + 0x00);
 	u32 reg;
 
 	reg = readl_relaxed(reset + PMC_SCRATCH0);
@@ -290,8 +290,9 @@ static __initdata struct tegra_clk_init_table tegra30_clk_init_table[] = {
 	{ "cpu",	NULL,		0,		true },
 	{ "kfuse",	NULL,		0,		true },
 	{ "fuse",	NULL,		0,		true },
+	{ "sclk",	NULL,		0,		true },
 #ifdef CONFIG_TEGRA_SILICON_PLATFORM
-#ifdef CONFIG_MACH_X3
+#if 0
 	{ "pll_p",	NULL,		408000000,	true },
 	{ "pll_p_out1",	"pll_p",	9600000,	true },
 	{ "pll_p_out2",	"pll_p",	48000000,	true },
@@ -300,7 +301,7 @@ static __initdata struct tegra_clk_init_table tegra30_clk_init_table[] = {
 	{ "pll_p",	NULL,		0,		true },
 	{ "pll_p_out1",	"pll_p",	0,		false },
 	{ "pll_p_out2",	"pll_p",	48000000,	false },
-	{ "pll_p_out3",	"pll_p",	0,		true },
+	{ "pll_p_out3",	"pll_p",	0,		false },
 #endif
 	{ "pll_m_out1",	"pll_m",	275000000,	false },
 	{ "pll_p_out4",	"pll_p",	102000000,	true },

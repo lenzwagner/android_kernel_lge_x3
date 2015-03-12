@@ -31,8 +31,8 @@
 #include <linux/power/lge_battery.h>
 #include "../../arch/arm/mach-tegra/board.h"
 
-#define POLLING_INTERVAL	(10 * HZ)
-#define POLLING_INTERVAL_DISCHG (20 * HZ)
+#define POLLING_INTERVAL	(20 * HZ)
+#define POLLING_INTERVAL_DISCHG (40 * HZ)
 #define CAMERA_STATE_ROOT	"/sys/devices/platform/tegra_camera/power_save_rec"
 
 // For Battery Scenario Start
@@ -91,7 +91,7 @@ int batt_Temp_C = 0x10000;
 #define UNLIMITED_TEMP_LOW	-50
 
 
-#define __DEBUG_TEMP
+//#define __DEBUG_TEMP
 
 #ifdef __DEBUG_TEMP
 #define DTEMP(fmt, args...) printk("[TEMP] " fmt, ##args)
@@ -1324,7 +1324,7 @@ static __devinit int lge_battery_probe(struct platform_device *pdev)
 
 	info->battery_power_update_workqueue = create_workqueue("x3_battery_workqueue");
 
-	INIT_DELAYED_WORK_DEFERRABLE(&info->polling_work, lge_battery_polling_work);
+	INIT_DEFERRABLE_WORK(&info->polling_work, lge_battery_polling_work);
 
 	queue_delayed_work(info->battery_power_update_workqueue, &info->polling_work, 10*HZ);
 	//schedule_delayed_work(&info->polling_work, 0);

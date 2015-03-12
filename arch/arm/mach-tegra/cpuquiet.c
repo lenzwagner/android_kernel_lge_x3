@@ -40,7 +40,7 @@
 #include "clock.h"
 
 #define INITIAL_STATE		TEGRA_CPQ_ENABLED
-#define UP_DELAY_MS		100	//70
+#define UP_DELAY_MS		120	//70
 #define DOWN_DELAY_MS		400	//2000
 #define HOTPLUG_DELAY_MS	100
 

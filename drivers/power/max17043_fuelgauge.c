@@ -892,7 +892,7 @@ static int __devinit max17043_probe(struct i2c_client *client,
 	chip->config = 0x971C;
 #endif
 
-	INIT_DELAYED_WORK_DEFERRABLE(&chip->work, max17043_work);
+	INIT_DEFERRABLE_WORK(&chip->work, max17043_work);
 	INIT_WORK(&chip->alert_work, max17043_alert_work);
 
 	max17043_read_version(client);

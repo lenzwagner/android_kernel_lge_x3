@@ -90,7 +90,9 @@ DEFINE_MUTEX(shared_lock);
 #ifdef CONFIG_MACH_X3
 extern struct lcd_gamma_rgb cmdlineRGBvalue;
 
-int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n);
+//
+extern bool x3_hddisplay_on;
+int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n);  
 struct tegra_dc *tegra_dc_gamma;
 int dc_set_gamma_rgb(int window_n, int red,int green,int blue)
 {
@@ -99,8 +101,9 @@ int dc_set_gamma_rgb(int window_n, int red,int green,int blue)
 	struct tegra_dc_win *win;
 	struct tegra_dc_win *dcwins[DC_N_WINDOWS];  
 
-	printk("%s start \n" ,__func__);
-
+	/*Only attempt to apply if the display is on, or a panic will happen.*/
+	if (x3_hddisplay_on) {
+		printk("%s start \n" ,__func__);
 		for (i = 0; i < DC_N_WINDOWS; i++) {
 			win = &tegra_dc_gamma->windows[i];
 			tegra_dc_writel(tegra_dc_gamma, WINDOW_A_SELECT << i,
@@ -115,8 +118,11 @@ int dc_set_gamma_rgb(int window_n, int red,int green,int blue)
 			tegra_dc_set_lut(tegra_dc_gamma, win);
 			dcwins[i] = tegra_dc_get_window(tegra_dc_gamma, i);  
 		}
-	tegra_dc_update_windows(dcwins, DC_N_WINDOWS); 
-	printk("%s end \n" ,__func__);
+		tegra_dc_update_windows(dcwins, DC_N_WINDOWS); 
+		printk("%s end \n" ,__func__);
+	} else
+		printk("%s: Tried to apply gamma_rgb settings when LCD was off\n",
+			__func__);
 	return 0;
 }
 
@@ -125,6 +131,8 @@ void dc_set_gamma_lut(void)
 	int i;
 	struct tegra_dc_win *dcwins[DC_N_WINDOWS];
 
+	/*Only attempt to apply if the display is on, or a panic will happen.*/
+	if (x3_hddisplay_on) {
 	printk("%s start \n" ,__func__);
 	for (i = 0; i < DC_N_WINDOWS; i++) {
 		struct tegra_dc_win *win = &tegra_dc_gamma->windows[i];
@@ -138,6 +146,9 @@ void dc_set_gamma_lut(void)
 	}
 	tegra_dc_update_windows(dcwins, DC_N_WINDOWS);
 	printk("%s end \n" ,__func__);
+	} else
+		printk("%s: Tried to apply gamma_lut settings when LCD was off\n",
+			__func__);
 }
 #endif
 
@@ -1136,8 +1147,15 @@ void tegra_dc_set_out_pin_polars(struct tegra_dc *dc,
 		}
 	}
 
+/*                                 */
+#if defined(CONFIG_MACH_LGE)	
+	pol1 = 0x01000000;
+	pol3 = 0x0;
+#else
 	pol1 = DC_COM_PIN_OUTPUT_POLARITY1_INIT_VAL;
 	pol3 = DC_COM_PIN_OUTPUT_POLARITY3_INIT_VAL;
+#endif	
+/*                                 */
 
 	pol1 |= set1;
 	pol1 &= ~unset1;

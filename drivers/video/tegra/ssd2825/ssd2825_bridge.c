@@ -546,12 +546,11 @@ int ssd2825_bridge_enable(void)
 //                                                                                                       
 
 		gpio_set_value(gpio_bridge_reset_n, 0);
-		mdelay(5);
-		gpio_set_value(gpio_bridge_reset_n, 1);
 		gpio_set_value(gpio_lcd_reset_n, 0);
 		mdelay(1);
+		gpio_set_value(gpio_bridge_reset_n, 1);
 		gpio_set_value(gpio_lcd_reset_n, 1);
-		mdelay(5);
+		mdelay(1);
 
 /*                                 */
 		clk_enable(clk_s3);
@@ -612,7 +611,7 @@ int ssd2825_bridge_disable(void)
 
 			sequence++;
 		}
-		mdelay(10);
+		mdelay(5);
 
 //                                                                                         
 		gpio_set_value(gpio_lcd_reset_n, 0);
@@ -835,11 +834,17 @@ static ssize_t ssd2825_bridge_reg_read2(struct device *dev, struct device_attrib
 	return count;
 }
 
+static int red = 255,green = 255,blue = 255;
+static ssize_t display_gamma_tuning_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d,%d,%d",red,green,blue);
+}
+
 static ssize_t display_gamma_tuning_store(struct device *dev,
 		struct device_attribute *attr,
 		const char *buf, size_t size)
 {
-	int red,green,blue;
 	sscanf(buf, "%d,%d,%d",&red,&green,&blue);
 	printk("RED:%d GREEN:%d BLUE:%d\n",red,green,blue);
 	dc_set_gamma_rgb(0,red,green,blue);
@@ -871,8 +876,104 @@ static ssize_t display_gamma_saved_store(struct device *dev,
 
 	return size;
 }
-DEVICE_ATTR(gamma_tuning, 0660, NULL, display_gamma_tuning_store);
+
+// Scans for a single unsigned integer (at most 3 digits) followed by
+// an optional single space (or new line or NUL).
+// Returns number of bytes consumed (including the space) or -1 on failure.
+// Will read at most 4 bytes into buf.
+static int scan_single_int_and_space(const char *buf, int *out)
+{
+	char c = buf[0];
+	int n = 0;
+	int i = 0;
+
+	// At least 1 digit is mandatory.
+	if (c >= '0' && c <= '9') {
+		n = c - '0';
+	} else {
+		return -1;
+	}
+
+	for (i = 1; i < 4; i++) {
+		c = buf[i];
+		switch (c) {
+		case '0':
+		case '1':
+		case '2':
+		case '3':
+		case '4':
+		case '5':
+		case '6':
+		case '7':
+		case '8':
+		case '9':
+			n = 10 * n + c - '0';
+			break;
+		case ' ':
+		case '\n':
+		case '\0':
+			*out = n;
+			return i + 1;
+		default:
+			return -1;
+		}
+	}
+	return 0;
+}
+
+static ssize_t display_gamma_lut_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t size)
+{
+	
+	int i;     // Index in lut
+	int j = 0; // Index in buf
+
+	// Write r, g and b contigiously in a single loop.
+	u8 *lut = (u8*) &cmdlineRGBvalue.lut;
+	
+	// Minimum length of 3 * 256 space separated digits
+	if (size < 2 * 3 * 256 - 1) {
+		return -EINVAL;
+	}
+	// Maximum length of 3 * 256 space separated 3 digits with extra space
+	// at end
+	if (size > 4 * 3 * 256) {
+		return - EINVAL;
+	}
+
+	// Include one of the NULs provided by the kernel so that user space
+	// isn't forced to put a space or NUL.
+	size++;
+
+	// Make sure we scan at most 4 bytes each iteration (3 digits + space)
+	// to avoid running past the end of buf.
+	for (i = 0; i < 3 * 256; i++) {
+		int n = 0;
+		int bytes_consumed = scan_single_int_and_space(&buf[j], &n);
+		if (bytes_consumed < 0) { // Invalid data
+			return -EINVAL;
+		}
+		j += bytes_consumed;
+		if (j >= size) { // Not enough integers supplied
+			return -EINVAL;
+		}
+		if (n < 0 || n > 255) { // Out of range integer
+			return -EINVAL;
+		}
+		lut[i] = n;
+	}
+
+	cmdlineRGBvalue.table_type = GAMMA_NV_LUT;
+
+	dc_set_gamma_lut();
+
+	return size;
+}
+
+DEVICE_ATTR(gamma_tuning, 0660, display_gamma_tuning_show, display_gamma_tuning_store);
 DEVICE_ATTR(gamma_saved, 0660, NULL, display_gamma_saved_store);
+DEVICE_ATTR(gamma_lut, 0660, NULL, display_gamma_lut_store);
 DEVICE_ATTR(device_id, 0660, ssd2825_bridge_show_device_id, NULL);
 DEVICE_ATTR(mipi_lp, 0660, ssd2825_bridge_show_mipi_lp, NULL);
 DEVICE_ATTR(mipi_hs, 0660, ssd2825_bridge_show_mipi_hs, NULL);
@@ -1090,6 +1191,7 @@ static int ssd2825_bridge_spi_probe(struct spi_device *spi)
 	err = device_create_file(&spi->dev, &dev_attr_reg_read2);
 	err = device_create_file(&spi->dev, &dev_attr_gamma_tuning);
 	err = device_create_file(&spi->dev, &dev_attr_gamma_saved);
+	err = device_create_file(&spi->dev, &dev_attr_gamma_lut);
 
 	bridge_spi = spi;
 
@@ -1127,6 +1229,7 @@ static int __devexit ssd2825_bridge_spi_remove(struct spi_device *spi)
 	device_remove_file(&spi->dev, &dev_attr_reg_read2);
 	device_remove_file(&spi->dev, &dev_attr_gamma_tuning);
 	device_remove_file(&spi->dev, &dev_attr_gamma_saved);
+	device_remove_file(&spi->dev, &dev_attr_gamma_lut);
 	return 0;
 }
 

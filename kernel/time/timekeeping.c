@@ -89,6 +89,9 @@ static struct timekeeper timekeeper;
 __cacheline_aligned_in_smp DEFINE_SEQLOCK(xtime_lock);
 
 
+/* Flag for if there is a persistent clock on this platform */
+bool __read_mostly persistent_clock_exist = false;
+
 /* flag for if timekeeping is suspended */
 int __read_mostly timekeeping_suspended;
 
@@ -613,7 +616,8 @@ void __init timekeeping_init(void)
 			"         Check your CMOS/BIOS settings.\n");
 		now.tv_sec = 0;
 		now.tv_nsec = 0;
-	}
+	} else if (now.tv_sec || now.tv_nsec)
+		persistent_clock_exist = true;
 
 	read_boot_clock(&boot);
 	if (!timespec_valid_strict(&boot)) {
@@ -693,11 +697,12 @@ static void __timekeeping_inject_sleeptime(struct timespec *delta)
 void timekeeping_inject_sleeptime(struct timespec *delta)
 {
 	unsigned long flags;
-	struct timespec ts;
 
-	/* Make sure we don't set the clock twice */
-	read_persistent_clock(&ts);
-	if (!(ts.tv_sec == 0 && ts.tv_nsec == 0))
+	/*
+	 * Make sure we don't set the clock twice, as timekeeping_resume()
+	 * already did it
+	 */
+	if (has_persistent_clock())
 		return;
 
 	write_seqlock_irqsave(&timekeeper.lock, flags);

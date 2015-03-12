@@ -478,7 +478,7 @@ err:
 	return rc;
 }
 
-static int __devexit dryice_rtc_remove(struct platform_device *pdev)
+static int dryice_rtc_remove(struct platform_device *pdev)
 {
 	struct imxdi_dev *imxdi = platform_get_drvdata(pdev);
 

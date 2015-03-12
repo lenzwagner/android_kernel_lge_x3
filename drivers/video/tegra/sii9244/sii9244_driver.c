@@ -2383,7 +2383,7 @@ void simg_timer_handler(unsigned long timer_type)
 
 	if (!resen_check_init)	
 	{		
-		INIT_DELAYED_WORK_DEFERRABLE(&rsen_check_control.work, simg_timer_schdule);
+		INIT_DEFERRABLE_WORK(&rsen_check_control.work, simg_timer_schdule);
 		resen_check_init = TRUE;	
 	}		
 	schedule_delayed_work(&rsen_check_control.work, 0);

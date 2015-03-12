@@ -1092,7 +1092,7 @@ static __devinit int max8971_probe(struct i2c_client *client,
 	//INIT_WORK(&max8971_wq, max8971_charger_wq);
 
 	//kkk_test
-	INIT_DELAYED_WORK_DEFERRABLE(&chip->monitor_work, lge_charger_setting_work);
+	INIT_DEFERRABLE_WORK(&chip->monitor_work, lge_charger_setting_work);
 	//schedule_delayed_work(&chip->monitor_work, 0);
 
 	if(is_tegra_batteryexistWhenBoot() == 1)

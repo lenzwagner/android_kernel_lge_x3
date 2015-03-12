@@ -82,6 +82,8 @@ static struct regulator_consumer_supply max77663_sd2_supply[] = {
 	REGULATOR_SUPPLY("vddio_cam", NULL),
 	REGULATOR_SUPPLY("pwrdet_cam", NULL),
 	REGULATOR_SUPPLY("vddio_sys", NULL),
+	REGULATOR_SUPPLY("pwrdet_nand", NULL),
+	REGULATOR_SUPPLY("pwrdet_pex_ctl", NULL),
 };
 
 static struct regulator_consumer_supply max77663_sd3_supply[] = {
@@ -106,6 +108,7 @@ static struct regulator_consumer_supply max77663_ldo2_supply[] = {
 };
 
 static struct regulator_consumer_supply max77663_ldo3_supply[] = {
+	REGULATOR_SUPPLY("vmmc", NULL),
 	REGULATOR_SUPPLY("vddio_sdmmc", "sdhci-tegra.2"),
 	REGULATOR_SUPPLY("pwrdet_sdmmc3", NULL),
 };
@@ -120,7 +123,10 @@ static struct regulator_consumer_supply max77663_ldo5_supply[] = {
 
 static struct regulator_consumer_supply max77663_ldo6_supply[] = {
 	REGULATOR_SUPPLY("avdd_osc", NULL),
-	REGULATOR_SUPPLY("avdd_usb_pll", NULL),
+	REGULATOR_SUPPLY("avdd_usb_pll", "tegra-udc.0"),
+	REGULATOR_SUPPLY("avdd_usb_pll", "tegra-ehci.0"),
+	REGULATOR_SUPPLY("avdd_usb_pll", "tegra-ehci.1"),
+	REGULATOR_SUPPLY("avdd_usb_pll", "tegra-ehci.2"),
 	REGULATOR_SUPPLY("avdd_hdmi_pll", NULL),
 };
 
@@ -130,6 +136,7 @@ static struct regulator_consumer_supply max77663_ldo7_supply[] = {
 
 static struct regulator_consumer_supply max77663_ldo8_supply[] = {
 	REGULATOR_SUPPLY("avdd_dsi_csi", NULL),
+	REGULATOR_SUPPLY("avdd_hsic", "tegra-ehci.1"),
 	REGULATOR_SUPPLY("pwrdet_mipi", NULL),
 };
 
@@ -191,10 +198,10 @@ MAX77663_PDATA_INIT(SD1, sd1,  800000, 1587500, NULL, 1, 0, 0,
 		    FPS_SRC_1, -1, -1, 0);
 
 /* SD2 must be always turned on because used as pull-up signal for NRST_IO. */
-MAX77663_PDATA_INIT(SD2, sd2,  600000, 3387500, NULL, 1, 0, 0,
+MAX77663_PDATA_INIT(SD2, sd2,  1800000, 1800000, NULL, 1, 0, 0,
 		    FPS_SRC_NONE, -1, -1, 0);
 
-MAX77663_PDATA_INIT(SD3, sd3,  600000, 3387500, NULL, 0, 0, 0,
+MAX77663_PDATA_INIT(SD3, sd3,  600000, 3387500, NULL, 0, 1, 0,
 		    FPS_SRC_NONE, -1, -1, 0);
 
 MAX77663_PDATA_INIT(LDO0, ldo0, 800000, 2350000, NULL, 0, 0, 0,
@@ -204,11 +211,11 @@ MAX77663_PDATA_INIT(LDO1, ldo1, 800000, 2350000, NULL, 0, 0, 0,
 		    FPS_SRC_NONE, -1, -1, 0);
 MAX77663_PDATA_INIT(LDO2, ldo2, 800000, 3950000, NULL, 0, 0, 0,
 		    FPS_SRC_NONE, -1, -1, 0);
-MAX77663_PDATA_INIT(LDO3, ldo3, 3000000, 3000000, NULL, 0, 0, 0,
+MAX77663_PDATA_INIT(LDO3, ldo3, 800000, 3950000, NULL, 0, 1, 0,
 		    FPS_SRC_NONE, -1, -1, 0);
 /* LDO4 must be always turned on because connected with vdd_rtc. */
-MAX77663_PDATA_INIT(LDO4, ldo4, 800000, 1587500, NULL, 1, 0, 0,
-		    FPS_SRC_0, -1, -1, 0);
+MAX77663_PDATA_INIT(LDO4, ldo4, 800000, 1587500, NULL, 0, 0, 0,
+		    FPS_SRC_0, -1, -1, LDO4_EN_TRACKING);
 
 MAX77663_PDATA_INIT(LDO5, ldo5, 800000, 3950000, NULL, 0, 0, 0,
 		    FPS_SRC_1, -1, -1, 0);
@@ -491,7 +498,7 @@ static struct tegra_suspend_platform_data x3_suspend_data = {
 	.cpu_off_timer	= 200,
 	.suspend_mode	= TEGRA_SUSPEND_LP0,
 	.core_timer	= 0x7e7e,
-	.core_off_timer = 0,
+	.core_off_timer = 0x80,
 	.corereq_high	= true,
 	.sysclkreq_high	= true,
 
@@ -508,7 +515,7 @@ static struct tegra_suspend_platform_data x3_suspend_data = {
 #endif
 
         .cpu_lp2_min_residency = 20000,
-
+	.cpu_resume_boost = 1300000,  /* CPU frequency resume boost in kHz */
 };
 
 static void x3_init_deep_sleep_mode(void)

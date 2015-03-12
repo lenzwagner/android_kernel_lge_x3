@@ -273,7 +273,7 @@ static __devinit int depl_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, drv);
-	INIT_DELAYED_WORK_DEFERRABLE(&drv->work, depl_update);
+	INIT_DEFERRABLE_WORK(&drv->work, depl_update);
 	schedule_delayed_work(&drv->work, 0);
 	return 0;
 

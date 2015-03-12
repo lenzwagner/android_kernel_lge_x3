@@ -118,11 +118,13 @@ static __initdata struct tegra_clk_init_table x3_clk_i2s2_table[] = {
 	{ NULL,		NULL,		0,		0},
 };
 
+#if 0
 static __initdata struct tegra_clk_init_table x3_clk_i2s4_table[] = {
 	/* name		parent		rate		enabled */
 	{ "i2s4",	"pll_a_out0",	0,		false},
 	{ NULL,		NULL,		0,		0},
 };
+#endif
 
 static struct platform_device bd_address_device = {
     .name = "bd_address",
@@ -239,13 +241,13 @@ static struct platform_device tegra_rtc_device = {
 //	.id = -1,
 //};
 
+/*
 static struct resource ram_console_resources[] = {
 	{
 		.flags = IORESOURCE_MEM,
 	},
 };
 
-/*
 static struct platform_device ram_console_device = {
 	.name 		= "ram_console",
 	.id 		= -1,
@@ -417,7 +419,6 @@ static void x3_audio_init(void)
 	platform_add_devices(x3_audio_devices, ARRAY_SIZE(x3_audio_devices));
 }
 
-#if 0
 int x3_read_misc(int index, char* buf, int size)
 {
     int h_file = 0;
@@ -549,7 +550,6 @@ int set_misc_msg(misc_msg_type msg, char* misc_msg, int size)
 	
 	return ret;
 }
-#endif
 
 extern unsigned int system_rev;
 hw_rev_pcb_type x3_get_hw_rev_pcb_version(void)
@@ -570,7 +570,6 @@ static void __init tegra_x3_init(void)
 	x3_i2c_init();
 	x3_regulator_init();
 	tegra_io_dpd_init();
-	x3_sdhci_init();
 	x3_usb_init();
 	tegra_ram_console_debug_init();
 
@@ -583,6 +582,7 @@ static void __init tegra_x3_init(void)
 	x3_gps_init();
 	x3_baseband_init();
 	x3_panel_init();
+	x3_sdhci_init();
 	x3_audio_init();
 	x3_bt_rfkill();
 	x3_setup_bluesleep();
@@ -599,10 +599,11 @@ static void __init tegra_x3_init(void)
 static void __init tegra_x3_reserve(void)
 {
 #if defined(CONFIG_NVMAP_CONVERT_CARVEOUT_TO_IOVMM)
-	tegra_reserve(0, SZ_4M, SZ_8M);
+	tegra_reserve(0, SZ_8M, SZ_8M);
 #else
 	tegra_reserve(SZ_128M, SZ_8M, SZ_8M);
 #endif
+	tegra_ram_console_debug_reserve(SZ_1M);
 }
 
 static const char *x3_dt_board_compat[] = {
@@ -611,7 +612,7 @@ static const char *x3_dt_board_compat[] = {
 };
 
 MACHINE_START(X3, "x3")
-	.atag_offset	= 0x100,
+	.atag_offset	= 0x80000100,
 	.soc		= &tegra_soc_desc,
 	.map_io         = tegra_map_common_io,
 	.reserve        = tegra_x3_reserve,
