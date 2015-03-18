@@ -24,7 +24,7 @@
 #include <linux/of.h>
 #include <mach/thermal.h>
 
-#define MAX_DVFS_FREQS	44
+#define MAX_DVFS_FREQS	40
 #define MAX_DVFS_TABLES	80
 #define DVFS_RAIL_STATS_TOP_BIN	60
 #define MAX_THERMAL_LIMITS	8
