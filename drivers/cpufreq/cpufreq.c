@@ -308,7 +308,7 @@ void cpufreq_notify_transition(struct cpufreq_freqs *freqs, unsigned int state)
 				CPUFREQ_POSTCHANGE, freqs);
 		if (likely(policy) && likely(policy->cpu == freqs->cpu)) {
 			policy->cur = freqs->new;
-			sysfs_notify(&policy->kobj, NULL, "scaling_cur_freq");
+			sysfs_notify(policy->kobj, NULL, "scaling_cur_freq");
 		}
 		break;
 	}
@@ -328,7 +328,7 @@ void cpufreq_notify_utilization(struct cpufreq_policy *policy,
 		policy->util = util;
 
 	if (policy->util >= MIN_CPU_UTIL_NOTIFY)
-		sysfs_notify(&policy->kobj, NULL, "cpu_utilization");
+		sysfs_notify(policy->kobj, NULL, "cpu_utilization");
 
 }
 
@@ -522,8 +522,8 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 	policy->user_policy.policy = policy->policy;
 	policy->user_policy.governor = policy->governor;
 
-	sysfs_notify(&policy->kobj, NULL, "scaling_governor");
-	
+	sysfs_notify(policy->kobj, NULL, "scaling_governor");
+
 	if (ret)
 		return ret;
 	else
@@ -934,6 +934,7 @@ static ssize_t store(struct kobject *kobj, struct attribute *attr,
 	}
 #endif
 
+	policy = freqobj->cpu_policy;
 	policy = cpufreq_cpu_get_sysfs(policy->cpu);
 	if (!policy)
 		goto no_policy;
@@ -1259,6 +1260,12 @@ static int cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
 		pr_debug("initialization failed\n");
 		goto err_unlock_policy;
 	}
+
+	/*
+	 * affected cpus must always be the one, which are online. We aren't
+	 * managing offline cpus here.
+	 */
+	cpumask_and(policy->cpus, policy->cpus, cpu_online_mask);
 
 	policy->user_policy.min = policy->min;
 	policy->user_policy.max = policy->max;
@@ -2046,8 +2053,17 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 	blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
 			CPUFREQ_NOTIFY, policy);
 
-	data->min = policy->min;
-	data->max = policy->max;
+	if (policy->cpu)
+	{
+		cpu0_policy = cpufreq_cpu_get(0);
+		data->min = cpu0_policy->min;
+		data->max = cpu0_policy->max;
+	}
+	else
+	{
+		data->min = policy->min;
+		data->max = policy->max;
+	}
 
 	pr_debug("new min and max freqs are %u - %u kHz\n",
 					data->min, data->max);
@@ -2068,7 +2084,11 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 				__cpufreq_governor(data, CPUFREQ_GOV_STOP);
 
 			/* start new governor */
-			data->governor = policy->governor;
+			if (policy->cpu && cpu0_policy)
+				data->governor = cpu0_policy->governor;
+			else
+				data->governor = policy->governor;
+
 			if (__cpufreq_governor(data, CPUFREQ_GOV_START)) {
 				/* new governor failed, so re-start old one */
 				pr_debug("starting governor %s failed\n",
