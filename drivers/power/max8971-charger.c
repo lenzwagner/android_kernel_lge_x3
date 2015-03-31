@@ -8,7 +8,7 @@
  *
  */
 
-#define DEBUG
+//#define DEBUG
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -1125,11 +1125,12 @@ static __devinit int max8971_probe(struct i2c_client *client,
 	}
 */
 
- 	ret = device_create_file(&client->dev, &dev_attr_chgcc_ta);
-        if (ret < 0) {
-                printk("device_create_file error!\n");
-                return ret;
+	ret = device_create_file(&client->dev, &dev_attr_chgcc_ta);
+	if (ret < 0) {
+		printk("device_create_file(chgcc_ta) error!\n");
+		goto err;
 	}
+
 	dev_info(&client->dev, "%s finish...\n", __func__);
 
 	return 0;
@@ -1157,6 +1158,8 @@ static __devexit int max8971_remove(struct i2c_client *client)
 
 	//kkk_test
 	//cancel_delayed_work(&chip->monitor_work);
+
+	device_remove_file(&client->dev, &dev_attr_chgcc_ta);
 
 	gpio_free(TEGRA_GPIO_PJ2);
 	free_irq(client->irq, chip);

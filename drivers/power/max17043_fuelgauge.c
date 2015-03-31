@@ -894,7 +894,7 @@ static int __devinit max17043_probe(struct i2c_client *client,
 
 	INIT_DEFERRABLE_WORK(&chip->work, max17043_work);
 	INIT_WORK(&chip->alert_work, max17043_alert_work);
-
+#if 1
 	max17043_read_version(client);
 	max17043_read_config(client);
 #if defined(CONFIG_MACH_VU10)
@@ -903,8 +903,17 @@ static int __devinit max17043_probe(struct i2c_client *client,
 	max17043_set_rcomp(RCOMP_BL44JN);
 #endif
 	max17043_set_athd(MONITOR_LEVEL);
+#if defined(CONFIG_MACH_VU10)
 	max17043_clear_interrupt(client);
+#else
+	if(x3_get_hw_rev_pcb_version() > hw_rev_pcb_type_E)
+	{
+		max17043_clear_interrupt(client);
+	}
+#endif
+#endif
 
+#if 1
 	// sysfs path : /sys/devices/platform/i2c_omap.2/i2c-2/2-0036/soc
 	ret = device_create_file(&client->dev, &dev_attr_soc);
 	if (ret < 0) {
@@ -931,10 +940,13 @@ static int __devinit max17043_probe(struct i2c_client *client,
 		goto err_create_file_por_failed;
 	}
 #endif
+/*                                                                      */
+
+#endif
 
 	max17043_update(client);
 	schedule_delayed_work(&chip->work, MAX17043_WORK_DELAY);
-
+#if defined(CONFIG_MACH_VU10)
 	tegra_gpio_enable(GAUGE_INT);
 
 	ret = enable_irq_wake(client->irq);
@@ -950,12 +962,38 @@ static int __devinit max17043_probe(struct i2c_client *client,
 	}
 	gpio_direction_input(GAUGE_INT);
 
+//		ret = request_irq(client->irq,	max17043_interrupt_handler,	IRQF_TRIGGER_FALLING,	"MAX17043_Alert", NULL);
 	ret = request_threaded_irq(client->irq, NULL, max17043_interrupt_handler, IRQF_ONESHOT | IRQF_TRIGGER_FALLING, client->name, chip);
 	if (ret < 0) {
 		printk(KERN_DEBUG " [MAX17043] IRQ Request Failed\n");
 		goto err_request_irq_failed;
 	}
+#else
+	if(x3_get_hw_rev_pcb_version() > hw_rev_pcb_type_E) // Rev 1.0
+	{
+		tegra_gpio_enable(GAUGE_INT);
 
+		ret = enable_irq_wake(client->irq);
+		if (ret < 0) {
+			printk(KERN_DEBUG "[MAX17043] set GAUGE_INT to wakeup source failed.\n");
+			goto err_request_wakeup_irq_failed;
+		}
+
+		ret = gpio_request(GAUGE_INT, "max17043_alert");
+		if (ret < 0) {
+			printk(KERN_DEBUG " [MAX17043] GPIO Request Failed\n");
+			goto err_gpio_request_failed;
+		}
+		gpio_direction_input(GAUGE_INT);
+
+//		ret = request_irq(client->irq,	max17043_interrupt_handler,	IRQF_TRIGGER_FALLING,	"MAX17043_Alert", NULL);
+		ret = request_threaded_irq(client->irq, NULL, max17043_interrupt_handler, IRQF_ONESHOT | IRQF_TRIGGER_FALLING, client->name, chip);
+		if (ret < 0) {
+			printk(KERN_DEBUG " [MAX17043] IRQ Request Failed\n");
+			goto err_request_irq_failed;
+		}
+	}
+#endif
 	return 0;
 
 /*                                                                      */
@@ -968,11 +1006,22 @@ err_create_file_por_failed:
 err_create_file_state_failed:
 	device_remove_file(&client->dev, &dev_attr_soc);
 err_create_file_soc_failed:
+#if defined(CONFIG_MACH_VU10)
 	disable_irq_wake(gpio_to_irq(GAUGE_INT));
 err_request_wakeup_irq_failed:
 	free_irq(gpio_to_irq(GAUGE_INT), chip);
 err_request_irq_failed:
 	gpio_free(GAUGE_INT);
+#else
+	if(x3_get_hw_rev_pcb_version() > hw_rev_pcb_type_E) //Rev 1.0
+	{
+		disable_irq_wake(gpio_to_irq(GAUGE_INT));
+err_request_wakeup_irq_failed:
+	free_irq(gpio_to_irq(GAUGE_INT), chip);
+err_request_irq_failed:
+	gpio_free(GAUGE_INT);
+	}
+#endif
 err_gpio_request_failed:
 	power_supply_unregister(&chip->battery);
 err_power_supply_register_failed:
@@ -1004,6 +1053,7 @@ static int __devexit max17043_remove(struct i2c_client *client)
 #ifdef CONFIG_PM
 static int max17043_suspend(struct device *dev)
 {
+#if defined(CONFIG_MACH_VU10)
 	int alert_level = 0;
 	struct max17043_chip *chip = dev_get_drvdata(dev);
 
@@ -1013,7 +1063,26 @@ static int max17043_suspend(struct device *dev)
 	cancel_delayed_work_sync(&chip->work);
 
 	printk(KERN_DEBUG " [MAX17043] Max17043_Suspend\n");
+#else
+	if(x3_get_hw_rev_pcb_version() > hw_rev_pcb_type_E)	  //Rev 1.0
+	{
+		int alert_level = 0;
+	struct max17043_chip *chip = dev_get_drvdata(dev);
 
+		max17043_read_config(chip->client);
+		alert_level = max17043_next_alert_level(chip->soc);
+		max17043_set_athd(alert_level);
+		cancel_delayed_work_sync(&chip->work);
+
+		printk(KERN_DEBUG " [MAX17043] Max17043_Suspend\n");
+	}
+	else
+	{
+		struct max17043_chip *chip = dev_get_drvdata(dev);
+
+		cancel_delayed_work_sync(&chip->work);
+	}
+#endif
 	return 0;
 }
 

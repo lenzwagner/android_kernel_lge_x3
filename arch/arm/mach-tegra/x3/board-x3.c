@@ -551,10 +551,9 @@ int set_misc_msg(misc_msg_type msg, char* misc_msg, int size)
 	return ret;
 }
 
-extern unsigned int system_rev;
+
 hw_rev_pcb_type x3_get_hw_rev_pcb_version(void)
 {
-	pr_info("!!!!!X3!!!!!! HARDWARE REVISION: 0x%x", system_rev);
 	return system_rev;
 }
 
