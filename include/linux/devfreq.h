@@ -4,6 +4,7 @@
  *
  * Copyright (C) 2011 Samsung Electronics
  *	MyungJoo Ham <myungjoo.ham@samsung.com>
+ * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -35,6 +36,8 @@ struct devfreq;
  *			own protocol with private_data. However, because
  *			this is governor-specific, a governor using this
  *			will be only compatible with devices aware of it.
+ * @busy:		The current status of the device; True if the
+ *			device is busy, false if it is not.
  */
 struct devfreq_dev_status {
 	/* both since the last measure */
@@ -42,6 +45,7 @@ struct devfreq_dev_status {
 	unsigned long busy_time;
 	unsigned long current_frequency;
 	void *private_data;
+	bool busy;
 };
 
 /*
@@ -73,6 +77,8 @@ struct devfreq_dev_status {
  *			from devfreq_remove_device() call. If the user
  *			has registered devfreq->nb at a notifier-head,
  *			this is the time to unregister it.
+ * @freq_table:	Optional list of frequencies to support statistics.
+ * @max_state:	The size of freq_table.
  */
 struct devfreq_dev_profile {
 	unsigned long initial_freq;
@@ -83,6 +89,9 @@ struct devfreq_dev_profile {
 			      struct devfreq_dev_status *stat);
 	int (*get_cur_freq)(struct device *dev, unsigned long *freq);
 	void (*exit)(struct device *dev);
+
+	unsigned long *freq_table;
+	unsigned int max_state;
 };
 
 /**
@@ -120,6 +129,7 @@ struct devfreq_governor {
  *		using devfreq.
  * @profile:	device-specific devfreq profile
  * @governor:	method how to choose frequency based on the usage.
+ * @governor_name:	devfreq governor name for use with this devfreq
  * @nb:		notifier block used to notify devfreq object that it should
  *		reevaluate operable frequencies. Devfreq users may use
  *		devfreq.nb to the corresponding register notifier call chain.
@@ -130,6 +140,10 @@ struct devfreq_governor {
  * @min_freq:	Limit minimum frequency requested by user (0: none)
  * @max_freq:	Limit maximum frequency requested by user (0: none)
  * @stop_polling:	 devfreq polling status of a device.
+ * @total_trans:	Number of devfreq transitions
+ * @trans_table:	Statistics of devfreq transitions
+ * @time_in_state:	Statistics of devfreq states
+ * @last_stat_updated:	The last time stat updated
  *
  * This structure stores the devfreq information for a give device.
  *
@@ -146,6 +160,7 @@ struct devfreq {
 	struct device dev;
 	struct devfreq_dev_profile *profile;
 	const struct devfreq_governor *governor;
+	char governor_name[DEVFREQ_NAME_LEN];
 	struct notifier_block nb;
 	struct delayed_work work;
 
@@ -156,12 +171,19 @@ struct devfreq {
 	unsigned long min_freq;
 	unsigned long max_freq;
 	bool stop_polling;
+
+	/* information for device freqeuncy transition */
+	unsigned int total_trans;
+	unsigned int *trans_table;
+	unsigned long *time_in_state;
+	unsigned long last_stat_updated;
+	bool suspended;
 };
 
 #if defined(CONFIG_PM_DEVFREQ)
 extern struct devfreq *devfreq_add_device(struct device *dev,
 				  struct devfreq_dev_profile *profile,
-				  const struct devfreq_governor *governor,
+				  const char *governor_name,
 				  void *data);
 extern int devfreq_remove_device(struct devfreq *devfreq);
 extern int devfreq_suspend_device(struct devfreq *devfreq);
@@ -175,17 +197,7 @@ extern int devfreq_register_opp_notifier(struct device *dev,
 extern int devfreq_unregister_opp_notifier(struct device *dev,
 					   struct devfreq *devfreq);
 
-#ifdef CONFIG_DEVFREQ_GOV_POWERSAVE
-extern const struct devfreq_governor devfreq_powersave;
-#endif
-#ifdef CONFIG_DEVFREQ_GOV_PERFORMANCE
-extern const struct devfreq_governor devfreq_performance;
-#endif
-#ifdef CONFIG_DEVFREQ_GOV_USERSPACE
-extern const struct devfreq_governor devfreq_userspace;
-#endif
 #ifdef CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND
-extern const struct devfreq_governor devfreq_simple_ondemand;
 /**
  * struct devfreq_simple_ondemand_data - void *data fed to struct devfreq
  *	and devfreq_add_device
@@ -207,9 +219,9 @@ struct devfreq_simple_ondemand_data {
 
 #else /* !CONFIG_PM_DEVFREQ */
 static inline struct devfreq *devfreq_add_device(struct device *dev,
-				  struct devfreq_dev_profile *profile,
-				  const struct devfreq_governor *governor,
-				  void *data)
+					  struct devfreq_dev_profile *profile,
+					  const char *governor_name,
+					  void *data)
 {
 	return NULL;
 }
@@ -232,7 +244,7 @@ static inline int devfreq_resume_device(struct devfreq *devfreq)
 static inline struct opp *devfreq_recommended_opp(struct device *dev,
 					   unsigned long *freq, u32 flags)
 {
-	return NULL;
+	return ERR_PTR(-EINVAL);
 }
 
 static inline int devfreq_register_opp_notifier(struct device *dev,
@@ -246,11 +258,6 @@ static inline int devfreq_unregister_opp_notifier(struct device *dev,
 {
 	return -EINVAL;
 }
-
-#define devfreq_powersave	NULL
-#define devfreq_performance	NULL
-#define devfreq_userspace	NULL
-#define devfreq_simple_ondemand	NULL
 
 #endif /* CONFIG_PM_DEVFREQ */
 
