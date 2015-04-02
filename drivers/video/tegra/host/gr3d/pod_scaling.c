@@ -38,9 +38,11 @@
 #include <linux/clk.h>
 #include <linux/export.h>
 #include <linux/slab.h>
-
 #include <mach/clk.h>
 #include <mach/hardware.h>
+
+#include <linux/notifier.h>
+#include <linux/tegra-throughput.h>
 
 #include <governor.h>
 
@@ -129,6 +131,7 @@ struct podgov_info_rec {
 	unsigned int		hint_avg;
 	int			block;
 
+	struct notifier_block	throughput_hint_notifier;
 };
 
 /*******************************************************************************
@@ -146,10 +149,6 @@ enum podgov_adjustment_type {
 	ADJUSTMENT_DEVICE_REQ = 1
 };
 
-
-/* Some functions cannot get pointer to podgov anywhere :-(
- * Yes, this should be fixed */
-struct podgov_info_rec *local_podgov;
 
 /*******************************************************************************
  * scaling_limit(df, freq)
@@ -693,21 +692,25 @@ static void podgov_idle_handler(struct work_struct *work)
  * required throughput
  ******************************************************************************/
 
-void nvhost_scale3d_set_throughput_hint(int hint)
+static int nvhost_scale3d_set_throughput_hint(struct notifier_block *nb,
+					      unsigned long action, void *data)
 {
-	struct podgov_info_rec *podgov = local_podgov;
+	struct podgov_info_rec *podgov =
+		container_of(nb, struct podgov_info_rec,
+			     throughput_hint_notifier);
 	struct devfreq *df;
 
+	int hint = tegra_throughput_get_hint();
 	long idle;
 	long curr, target;
 	int avg_idle, avg_hint, scale_score;
 	unsigned int smooth;
 
 	if (!podgov)
-		return;
+		return NOTIFY_DONE;
 	df = podgov->power_manager;
 	if (!df)
-		return;
+		return NOTIFY_DONE;
 
 	mutex_lock(&podgov->power_manager->lock);
 
@@ -717,7 +720,7 @@ void nvhost_scale3d_set_throughput_hint(int hint)
 		!podgov->p_use_throughput_hint ||
 		podgov->block > 0) {
 		mutex_unlock(&podgov->power_manager->lock);
-		return;
+		return NOTIFY_DONE;
 	}
 
 	trace_podgov_hint(podgov->idle_estimate, hint);
@@ -762,8 +765,8 @@ void nvhost_scale3d_set_throughput_hint(int hint)
 		avg_hint);
 
 	mutex_unlock(&podgov->power_manager->lock);
+	return NOTIFY_OK;
 }
-EXPORT_SYMBOL(nvhost_scale3d_set_throughput_hint);
 
 /*******************************************************************************
  * debugfs interface for controlling 3d clock scaling on the fly
@@ -1061,10 +1064,6 @@ static int nvhost_pod_init(struct devfreq *df)
 		goto err_alloc_podgov;
 	df->data = (void *)podgov;
 
-	/* This should be removed after the governor include also the hint
-	 * interface */
-	local_podgov = podgov;
-
 	/* Initialise workers */
 	INIT_WORK(&podgov->work, podgov_clocks_handler);
 	INIT_DELAYED_WORK(&podgov->idle_timer, podgov_idle_handler);
@@ -1133,7 +1132,8 @@ static int nvhost_pod_init(struct devfreq *df)
 			pr_err("%s: too many frequencies\n", __func__);
 			break;
 		}
-		rounded_rate = clk_round_rate(clk_get_parent(pdata->clk[0]), rate);
+		rounded_rate = 
+			clk_round_rate(clk_get_parent(pdata->clk[0]), rate);
 		if (podgov->freq_count &&
 		    freqs[podgov->freq_count - 1] == rounded_rate)
 			break;
@@ -1153,6 +1153,12 @@ static int nvhost_pod_init(struct devfreq *df)
 	podgov->hint_avg = 0;
 
 	nvhost_scale3d_debug_init(df);
+
+	/* register the governor to throughput hint notifier chain */
+	podgov->throughput_hint_notifier.notifier_call =
+		&nvhost_scale3d_set_throughput_hint;
+	blocking_notifier_chain_register(&throughput_notifier_list,
+					 &podgov->throughput_hint_notifier);
 
 	return 0;
 
@@ -1179,6 +1185,8 @@ static void nvhost_pod_exit(struct devfreq *df)
 	struct podgov_info_rec *podgov = df->data;
 	struct platform_device *d = to_platform_device(df->dev.parent);
 
+	blocking_notifier_chain_unregister(&throughput_notifier_list,
+					   &podgov->throughput_hint_notifier);
 	cancel_work_sync(&podgov->work);
 	cancel_delayed_work(&podgov->idle_timer);
 
@@ -1191,14 +1199,31 @@ static void nvhost_pod_exit(struct devfreq *df)
 	nvhost_scale3d_debug_deinit(df);
 
 	kfree(podgov);
-	local_podgov = NULL;
+}
+
+static int nvhost_pod_handler(struct devfreq *devfreq, unsigned int event,
+				void *data)
+{
+	int ret = 0;
+
+	switch(event) {
+	case DEVFREQ_GOV_START:
+		ret = nvhost_pod_init(devfreq);
+		break;
+	
+	case DEVFREQ_GOV_STOP:
+		nvhost_pod_exit(devfreq);
+		break;
+	default:
+		break;
+	}
+
+	return ret;
 }
 
 const struct devfreq_governor nvhost_podgov = {
 	.name = "pod",
-	.init = nvhost_pod_init,
-	.exit = nvhost_pod_exit,
 	.get_target_freq = nvhost_pod_estimate_freq,
-	.no_central_polling = true,
+	.event_handler = nvhost_pod_handler,
 };
 

@@ -1,84 +1,119 @@
 /*
- * drivers/misc/throughput.c
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
  *
- * Copyright (C) 2012, NVIDIA CORPORATION. All rights reserved.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
+ * This program is distributed in the hope it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <linux/kthread.h>
 #include <linux/ktime.h>
 #include <linux/miscdevice.h>
 #include <linux/fs.h>
+#include <linux/debugfs.h>
 #include <linux/init.h>
 #include <linux/spinlock.h>
 #include <linux/throughput_ioctl.h>
 #include <linux/module.h>
 #include <linux/nvhost.h>
+#include <linux/notifier.h>
+#include <linux/tegra-throughput.h>
 #include <mach/dc.h>
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/tegra_throughput.h>
 
 #define DEFAULT_SYNC_RATE 60000 /* 60 Hz */
 
-static unsigned short target_frame_time;
-static unsigned short last_frame_time;
+static unsigned int target_frame_time;
 static ktime_t last_flip;
-static unsigned int multiple_app_disable;
 static spinlock_t lock;
+
+#define EMA_PERIOD  8
+
+static int frame_time_sum_init = 1;
+static long frame_time_sum; /* used for fps EMA */
+static u64 framecount;
+static u64 frame_timestamp;
 
 static struct work_struct work;
 static int throughput_hint;
 
+static int sync_rate;
+static int throughput_active_app_count;
+
+BLOCKING_NOTIFIER_HEAD(throughput_notifier_list);
+EXPORT_SYMBOL(throughput_notifier_list);
+
 static void set_throughput_hint(struct work_struct *work)
 {
+	trace_tegra_throughput_hint(throughput_hint);
+
 	/* notify throughput hint clients here */
-	nvhost_scale3d_set_throughput_hint(throughput_hint);
+	blocking_notifier_call_chain(&throughput_notifier_list,
+				     throughput_hint, NULL);
 }
+
+int tegra_throughput_get_hint(void)
+{
+	return throughput_hint;
+}
+EXPORT_SYMBOL(tegra_throughput_get_hint);
 
 static void throughput_flip_callback(void)
 {
 	long timediff;
 	ktime_t now;
 
-	/* only register flips when a single app is active */
-	if (multiple_app_disable)
-		return;
-
 	now = ktime_get();
+	spin_lock(&lock);
+	framecount++;
+	frame_timestamp = ktime_to_us(now);
+	spin_unlock(&lock);
+
 	if (last_flip.tv64 != 0) {
 		timediff = (long) ktime_us_delta(now, last_flip);
-		if (timediff > (long) USHRT_MAX)
-			last_frame_time = USHRT_MAX;
-		else
-			last_frame_time = (unsigned short) timediff;
+		trace_tegra_throughput_flip(timediff);
 
-		if (last_frame_time == 0) {
-			pr_warn("%s: flips %lld nsec apart\n",
+		if (timediff <= 0) {
+			pr_debug("%s: flips %lld nsec apart\n",
 				__func__, now.tv64 - last_flip.tv64);
+			last_flip = now;
 			return;
 		}
 
-		throughput_hint =
-			((int) target_frame_time * 1000) / last_frame_time;
+		if (target_frame_time == 0)
+			return;
 
-		if (!work_pending(&work))
+		throughput_hint =
+			((int) target_frame_time * 1000) / timediff;
+
+		trace_tegra_throughput_gen_hint(throughput_hint, timediff);
+
+		/* only deliver throughput hints when a single app is active */
+		if (throughput_active_app_count == 1 && !work_pending(&work))
 			schedule_work(&work);
+
+		if (frame_time_sum_init) {
+			frame_time_sum = timediff * EMA_PERIOD;
+			frame_time_sum_init = 0;
+		} else {
+			int t = (frame_time_sum / EMA_PERIOD) *
+				(EMA_PERIOD - 1);
+			frame_time_sum = t + timediff;
+		}
 	}
+
 	last_flip = now;
 }
-
-static int sync_rate;
-static int throughput_active_app_count;
 
 static void reset_target_frame_time(void)
 {
@@ -89,26 +124,20 @@ static void reset_target_frame_time(void)
 			sync_rate = DEFAULT_SYNC_RATE;
 	}
 
-	target_frame_time = (unsigned short) (1000000000 / sync_rate);
+	target_frame_time = (unsigned int) (1000000000 / sync_rate);
 
 	pr_debug("%s: panel sync rate %d, target frame time %u\n",
 		__func__, sync_rate, target_frame_time);
 }
 
-static int callback_initialized;
-
 static int throughput_open(struct inode *inode, struct file *file)
 {
 	spin_lock(&lock);
 
-	if (!callback_initialized) {
-		callback_initialized = 1;
-		tegra_dc_set_flip_callback(throughput_flip_callback);
-	}
-
 	throughput_active_app_count++;
-	if (throughput_active_app_count > 1)
-		multiple_app_disable = 1;
+	frame_time_sum_init = 1;
+
+	trace_tegra_throughput_open(throughput_active_app_count);
 
 	spin_unlock(&lock);
 
@@ -123,12 +152,12 @@ static int throughput_release(struct inode *inode, struct file *file)
 	spin_lock(&lock);
 
 	throughput_active_app_count--;
-	if (throughput_active_app_count == 0) {
+	frame_time_sum_init = 1;
+
+	trace_tegra_throughput_release(throughput_active_app_count);
+
+	if (throughput_active_app_count == 1)
 		reset_target_frame_time();
-		multiple_app_disable = 0;
-		callback_initialized = 0;
-		tegra_dc_unset_flip_callback();
-	}
 
 	spin_unlock(&lock);
 
@@ -139,13 +168,10 @@ static int throughput_release(struct inode *inode, struct file *file)
 
 static int throughput_set_target_fps(unsigned long arg)
 {
-	int disable;
-
 	pr_debug("%s: target fps %lu requested\n", __func__, arg);
+	trace_tegra_throughput_set_target_fps(arg);
 
-	disable = multiple_app_disable;
-
-	if (disable) {
+	if (throughput_active_app_count != 1) {
 		pr_debug("%s: %d active apps, disabling fps usage\n",
 			__func__, throughput_active_app_count);
 		return 0;
@@ -153,22 +179,14 @@ static int throughput_set_target_fps(unsigned long arg)
 
 	if (arg == 0)
 		reset_target_frame_time();
-	else {
-		unsigned long frame_time = (1000000 / arg);
-
-		if (frame_time > USHRT_MAX)
-			frame_time = USHRT_MAX;
-
-		target_frame_time = (unsigned short) frame_time;
-	}
+	else
+		target_frame_time = (unsigned int) (1000000 / arg);
 
 	return 0;
 }
 
 static long
-throughput_ioctl(struct file *file,
-			  unsigned int cmd,
-			  unsigned long arg)
+throughput_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int err = 0;
 
@@ -194,6 +212,9 @@ throughput_ioctl(struct file *file,
 static const struct file_operations throughput_user_fops = {
 	.owner			= THIS_MODULE,
 	.open			= throughput_open,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl		= throughput_ioctl,
+#endif
 	.release		= throughput_release,
 	.unlocked_ioctl		= throughput_ioctl,
 };
@@ -201,29 +222,91 @@ static const struct file_operations throughput_user_fops = {
 #define TEGRA_THROUGHPUT_MINOR 1
 
 static struct miscdevice throughput_miscdev = {
-	.minor  = TEGRA_THROUGHPUT_MINOR,
-	.name   = "tegra-throughput",
-	.fops   = &throughput_user_fops,
-	.mode   = 0666,
+	.minor = TEGRA_THROUGHPUT_MINOR,
+	.name  = "tegra-throughput",
+	.fops  = &throughput_user_fops,
+	.mode  = 0666,
 };
+
+static ssize_t show_fps(struct kobject *kobj,
+	struct attribute *attr, char *buf)
+{
+	int frame_time_avg;
+	ktime_t now;
+	long timediff;
+	int fps = 0;
+
+	if (frame_time_sum_init)
+		goto DONE;
+
+	now = ktime_get();
+	timediff = (long) ktime_us_delta(now, last_flip);
+	if (timediff > 1000000)
+		goto DONE;
+
+	frame_time_avg = frame_time_sum / EMA_PERIOD;
+	fps = frame_time_avg > 0 ? 1000000 / frame_time_avg : 0;
+
+DONE:
+	return sprintf(buf, "%d\n", fps);
+}
+
+static struct global_attr fps_attr = __ATTR(fps, 0444,
+		show_fps, NULL);
+
+static ssize_t show_framecount(struct kobject *kobj,
+	struct attribute *attr, char *buf)
+{
+	u64 fcount;
+	u64 fstamp;
+
+	spin_lock(&lock);
+	fcount = framecount;
+	fstamp = frame_timestamp;
+	spin_unlock(&lock);
+
+	return sprintf(buf, "%llu %llu\n",
+		       fcount, fstamp);
+}
+
+static struct global_attr framecount_attr = __ATTR(framecount, 0444,
+		show_framecount, NULL);
 
 int __init throughput_init_miscdev(void)
 {
-	int ret;
+	int ret_md, ret_f1, ret_f2;
 
 	pr_debug("%s: initializing\n", __func__);
 
 	spin_lock_init(&lock);
 	INIT_WORK(&work, set_throughput_hint);
 
-	ret = misc_register(&throughput_miscdev);
-	if (ret) {
-		pr_err("can\'t reigster throughput miscdev"
-		       " (minor %d err %d)\n", TEGRA_THROUGHPUT_MINOR, ret);
-		return ret;
+	ret_md = misc_register(&throughput_miscdev);
+	ret_f1 = sysfs_create_file(&throughput_miscdev.this_device->kobj,
+				   &fps_attr.attr);
+	ret_f2 = sysfs_create_file(&throughput_miscdev.this_device->kobj,
+				   &framecount_attr.attr);
+
+	if (ret_md == 0 && ret_f1 == 0 && ret_f2 == 0) {
+		tegra_dc_set_flip_callback(throughput_flip_callback);
+
+		return 0;
 	}
 
-	return 0;
+	if (ret_f2 == 0)
+		sysfs_remove_file(&throughput_miscdev.this_device->kobj,
+				  &framecount_attr.attr);
+	if (ret_f1 == 0)
+		sysfs_remove_file(&throughput_miscdev.this_device->kobj,
+				  &fps_attr.attr);
+	if (ret_md == 0)
+		misc_deregister(&throughput_miscdev);
+
+	if (ret_md)
+		return ret_md;
+	if (ret_f1)
+		return ret_f1;
+	return ret_f2;
 }
 
 module_init(throughput_init_miscdev);
@@ -232,7 +315,14 @@ void __exit throughput_exit_miscdev(void)
 {
 	pr_debug("%s: exiting\n", __func__);
 
+	tegra_dc_unset_flip_callback();
+
 	cancel_work_sync(&work);
+
+	sysfs_remove_file(&throughput_miscdev.this_device->kobj,
+			  &framecount_attr.attr);
+	sysfs_remove_file(&throughput_miscdev.this_device->kobj,
+			  &fps_attr.attr);
 
 	misc_deregister(&throughput_miscdev);
 }

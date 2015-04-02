@@ -1728,7 +1728,7 @@ static int imx111_probe(struct i2c_client *client,
 
 
 	i2c_set_clientdata(client, info);
-//	tegra_gpio_enable(IMX111_RESET_GPIO);
+	tegra_gpio_enable(IMX111_RESET_GPIO);
 	err = gpio_request(IMX111_RESET_GPIO, "8m_cam_reset");
   if (err < 0)
     pr_err("%s: gpio_request failed for gpio %s\n",

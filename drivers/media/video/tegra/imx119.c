@@ -677,9 +677,9 @@ static int imx119_probe(struct i2c_client *client,
 
 	i2c_set_clientdata(client, info);
 
-//	tegra_gpio_enable(VT_1V8V_EN);
+	tegra_gpio_enable(VT_1V8V_EN);
 	gpio_request(VT_1V8V_EN, "vt_1.8v_en");
-//	tegra_gpio_enable(SUB_CAM_RESET_N);
+	tegra_gpio_enable(SUB_CAM_RESET_N);
 	gpio_request(SUB_CAM_RESET_N, "sub_cam_reset_n");
 
 	return 0;
