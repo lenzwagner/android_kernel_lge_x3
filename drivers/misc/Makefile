@@ -81,3 +81,4 @@ obj-$(CONFIG_MACH_LGE)		+= mtc_eta/
 obj-$(CONFIG_INV_SENSORS)	+= inv_mpu/
 obj-$(CONFIG_MACH_LGE)		+= cpwatcher.o
 obj-$(CONFIG_LGE_ERS)		+= lge_ers.o
+obj-$(CONFIG_UID_CPUTIME) 	+= uid_cputime.o
