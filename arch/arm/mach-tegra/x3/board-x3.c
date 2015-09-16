@@ -78,7 +78,7 @@ extern int x3_baseband_init(void);
 #ifdef CONFIG_REBOOT_MONITOR
 extern void x3_setup_reboot(void);
 #else
-void x3_setup_reboot(void) { };
+void x3_setup_reboot(void) {}
 #endif
 
 static __initdata struct tegra_clk_init_table x3_clk_init_table[] = {
@@ -589,7 +589,6 @@ static void __init tegra_x3_init(void)
 	x3_sensors_init();
 	x3_suspend_init();
 	x3_bpc_mgmt_init();
-	tegra_release_bootloader_fb();
 	x3_sensor_input_init();
 	tegra_serial_debug_init(TEGRA_UARTD_BASE, INT_WDT_CPU, NULL, -1, -1);
 }
