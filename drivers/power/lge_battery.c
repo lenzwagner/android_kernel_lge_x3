@@ -67,8 +67,8 @@ long thermal_mit_t = 0; //thermal_mitigation
 static int curr_temp_flag = 0;
 
 //                                                                             
-static long thres_low = 35000;
-static long thres_high = 37000;
+static long thres_low = 59000;
+static long thres_high = 61000;
 extern long x3_get_current_skin_temp(void);
 /** LG Battery Scenario ***/
 //1. OTP(OverTemperature)
@@ -529,7 +529,7 @@ static int lge_battery_cable_set_property(struct power_supply *psy,
 					enum power_supply_property psp,
 					const union power_supply_propval *val)
 {
-	struct lge_battery_info *info;
+	struct lge_battery_info *info = NULL;
 
 	if(val->intval == POWER_SUPPLY_TYPE_MAINS)
 		info = container_of(psy, struct lge_battery_info, psy_ac);
@@ -914,7 +914,7 @@ static void lge_battery_monitor_work(struct work_struct *work)
 
 	thermal_mit_t = x3_get_current_skin_temp();
 
-	DBATT("skin temp : %d curr_temp_flag = %d\n", thermal_mit_t, curr_temp_flag);
+	DBATT("skin temp : %ld curr_temp_flag = %d\n", thermal_mit_t, curr_temp_flag);
 	if((thermal_mit_t > thres_high)&&(curr_temp_flag == 0)){
 		lge_battery_enable_charger(info, true);
 		curr_temp_flag = 1;
@@ -935,9 +935,9 @@ static void lge_battery_monitor_work(struct work_struct *work)
 		dev_err(info->dev, "get_current_for_log fail[%d]\n", ret);
 
 	if (current_now == -9998)
-		DBATT("temp_now[%dmC], current_sensor_off[single_core]\n", temp_now);
+		DBATT("temp_now[%ldmC], current_sensor_off[single_core]\n", temp_now);
 	else
-		DBATT("temp_now[%dmC], current_now[%dmA]\n", temp_now, current_now);
+		DBATT("temp_now[%ldmC], current_now[%dmA]\n", temp_now, current_now);
 #endif
 
 	chg_cnt_old = chg_cnt_new;
@@ -1125,6 +1125,7 @@ static ssize_t lge_battery_store(struct device *dev,
 	return ret;
 }
 
+#if 0
 static int lge_battery_create_attrs(struct device *dev)
 {
 	int i, rc;
@@ -1142,6 +1143,7 @@ failed:
 succeed:
 	return rc;
 }
+#endif
 
 static int lge_battery_is_charging(struct lge_battery_info *info)
 {
@@ -1414,7 +1416,7 @@ static void __exit lge_battery_exit(void)
 	platform_driver_unregister(&lge_battery_driver);
 }
 
-fs_initcall(lge_battery_init);
+late_initcall(lge_battery_init);
 module_exit(lge_battery_exit);
 
 MODULE_DESCRIPTION("LGE Battery Driver");

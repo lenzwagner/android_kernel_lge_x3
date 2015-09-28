@@ -299,40 +299,6 @@ static struct regulator_consumer_supply gpio_switch_ldo_mhl_en_supply[] = {
 };
 static int gpio_switch_ldo_mhl_en_voltages[] = {3300};
 
-#if 0
-static struct regulator_consumer_supply gpio_switch_ldo_sensor_3v0_en_supply[] = {
-        REGULATOR_SUPPLY("vdd_nct1008", NULL),
-        REGULATOR_SUPPLY("vdd_ina230", NULL),
-        REGULATOR_SUPPLY("vdd_3v_ldo", NULL),
-};
-static int gpio_switch_ldo_sensor_3v0_en_voltages[] = {3000};
-
-static struct regulator_consumer_supply gpio_switch_ldo_sensor_1v8_en_supply[] = {
-        REGULATOR_SUPPLY("vlg_1v8_ldo", NULL),
-};
-static int gpio_switch_ldo_sensor_1v8_en_voltages[] = {1800};
-#else
-static struct
-regulator_consumer_supply gpio_switch_ldo_vtherm_en_supply[] = {
-		REGULATOR_SUPPLY("vdd_nct1008", NULL),
-		REGULATOR_SUPPLY("vdd_ina230", NULL),
-};
-static int gpio_switch_ldo_vtherm_en_voltages[] = {3300};
-
-static struct regulator_consumer_supply gpio_switch_ldo_sensor_3v0_en_rev_d_supply[] = {
-        REGULATOR_SUPPLY("vdd_nct1008", NULL),
-        REGULATOR_SUPPLY("vdd_ina230", NULL),
-        REGULATOR_SUPPLY("vdd_3v_ldo", NULL),
-};
-static int gpio_switch_ldo_sensor_3v0_en_rev_d_voltages[] = {3000};
-
-
-static struct regulator_consumer_supply gpio_switch_ldo_sensor_1v8_en_rev_d_supply[] = {
-        REGULATOR_SUPPLY("vlg_1v8_ldo", NULL),
-};
-static int gpio_switch_ldo_sensor_1v8_en_rev_d_voltages[] = {1800};
-
-
 static struct regulator_consumer_supply gpio_switch_ldo_sensor_3v0_en_rev_e_supply[] = {
         REGULATOR_SUPPLY("vdd_nct1008", NULL),
         REGULATOR_SUPPLY("vdd_ina230", NULL),
@@ -346,7 +312,6 @@ static struct regulator_consumer_supply gpio_switch_ldo_sensor_1v8_en_rev_e_supp
 };
 static int gpio_switch_ldo_sensor_1v8_en_rev_e_voltages[] = {1800};
 
-#endif
 
 // +3V3_TPS_VFUSE
 static struct
@@ -424,68 +389,23 @@ static int gpio_switch_ldo_vdd_fuse_3v3_en_voltages[] = {3300};
 #define MHL_LDO_EN      TEGRA_GPIO_PV2
 #define THERM_LDO_EN	TEGRA_GPIO_PK6
 
-#define SENSOR_LDO_EN_REV_D   TEGRA_GPIO_PH2
-#define SENSOR_LDO_EN2_REV_D  TEGRA_GPIO_PH6
-
 #define SENSOR_LDO_EN_REV_E   TEGRA_GPIO_PX7
 #define SENSOR_LDO_EN2_REV_E  TEGRA_GPIO_PD2
 
 #define VFUSE_LDO_EN	TEGRA_GPIO_PK7
 
 GREG_INIT(0, ldo_mhl_en, NULL, MHL_LDO_EN, false, 0, 0, 0, 0);
-GREG_INIT(1, ldo_vtherm_en, NULL, THERM_LDO_EN, false, 0, 0, 0, 0);
-GREG_INIT(2, ldo_sensor_3v0_en_rev_d, NULL, SENSOR_LDO_EN_REV_D, false, 0, 0, 0, 0);
-GREG_INIT(3, ldo_sensor_1v8_en_rev_d, NULL, SENSOR_LDO_EN2_REV_D, false, 0, 0, 0, 0);
-GREG_INIT(4, ldo_sensor_3v0_en_rev_e, NULL, SENSOR_LDO_EN_REV_E, false, 0, 0, 0, 0);
-GREG_INIT(5, ldo_sensor_1v8_en_rev_e, NULL, SENSOR_LDO_EN2_REV_E, false, 0, 0, 0, 0);
-GREG_INIT(6, ldo_vdd_fuse_3v3_en, NULL, VFUSE_LDO_EN, false, 0, 0, 0, 0);
+GREG_INIT(1, ldo_sensor_3v0_en_rev_e, NULL, SENSOR_LDO_EN_REV_E, false, 0, 0, 0, 0);
+GREG_INIT(2, ldo_sensor_1v8_en_rev_e, NULL, SENSOR_LDO_EN2_REV_E, false, 0, 0, 0, 0);
+GREG_INIT(3, ldo_vdd_fuse_3v3_en, NULL, VFUSE_LDO_EN, false, 0, 0, 0, 0);
 
 #define ADD_GPIO_REG(_name)	(&gpio_pdata_##_name)
-static struct gpio_switch_regulator_subdev_data *gswitch_subdevs_rev_C[] = {
-	ADD_GPIO_REG(ldo_mhl_en),
-	ADD_GPIO_REG(ldo_vtherm_en),
-	ADD_GPIO_REG(ldo_vdd_fuse_3v3_en),
-};
-
-static struct gpio_switch_regulator_subdev_data *gswitch_subdevs_rev_D[] = {
-	ADD_GPIO_REG(ldo_mhl_en),
-	ADD_GPIO_REG(ldo_sensor_3v0_en_rev_d),
-	ADD_GPIO_REG(ldo_sensor_1v8_en_rev_d),
-	ADD_GPIO_REG(ldo_vdd_fuse_3v3_en),
-};
 
 static struct gpio_switch_regulator_subdev_data *gswitch_subdevs_rev_E[] = {
 	ADD_GPIO_REG(ldo_mhl_en),
 	ADD_GPIO_REG(ldo_sensor_3v0_en_rev_e),
 	ADD_GPIO_REG(ldo_sensor_1v8_en_rev_e),
 	ADD_GPIO_REG(ldo_vdd_fuse_3v3_en),
-};
-
-
-static struct gpio_switch_regulator_platform_data  gswitch_pdata_rev_C = {
-	.num_subdevs	= ARRAY_SIZE(gswitch_subdevs_rev_C),
-	.subdevs	= gswitch_subdevs_rev_C,
-};
-
-static struct platform_device gswitch_regulator_pdata_rev_C = {
-	.name	= "gpio-switch-regulator",
-	.id	= -1,
-	.dev	= {
-		.platform_data = &gswitch_pdata_rev_C,
-	},
-};
-
-static struct gpio_switch_regulator_platform_data  gswitch_pdata_rev_D = {
-	.num_subdevs	= ARRAY_SIZE(gswitch_subdevs_rev_D),
-	.subdevs	= gswitch_subdevs_rev_D,
-};
-
-static struct platform_device gswitch_regulator_pdata_rev_D = {
-	.name	= "gpio-switch-regulator",
-	.id	= -1,
-	.dev	= {
-		.platform_data = &gswitch_pdata_rev_D,
-	},
 };
 
 static struct gpio_switch_regulator_platform_data  gswitch_pdata_rev_E = {
@@ -501,43 +421,18 @@ static struct platform_device gswitch_regulator_pdata_rev_E = {
 	},
 };
 
-static int __init x3_gpio_switch_regulator_init_rev_C(void)
-{
-	int i;
 
-	for (i = 0; i < gswitch_pdata_rev_C.num_subdevs; ++i) {
-		struct gpio_switch_regulator_subdev_data *gswitch_data =
-						gswitch_pdata_rev_C.subdevs[i];
-		if (gswitch_data->gpio_nr <= TEGRA_NR_GPIOS)
-			tegra_gpio_enable(gswitch_data->gpio_nr);
-	}
-	return platform_device_register(&gswitch_regulator_pdata_rev_C);
+#if 0
+	int nregs;
+	regulator_devices = lge_power_devices;
+	nregs = ARRAY_SIZE(lge_power_devices);
+
+	return platform_add_devices(regulator_devices, nregs);
 }
-
-
-static int __init x3_gpio_switch_regulator_init_rev_D(void)
-{
-	int i;
-
-	for (i = 0; i < gswitch_pdata_rev_D.num_subdevs; ++i) {
-		struct gpio_switch_regulator_subdev_data *gswitch_data =
-						gswitch_pdata_rev_D.subdevs[i];
-		if (gswitch_data->gpio_nr <= TEGRA_NR_GPIOS)
-			tegra_gpio_enable(gswitch_data->gpio_nr);
-	}
-	return platform_device_register(&gswitch_regulator_pdata_rev_D);
-}
+#endif
 
 static int __init x3_gpio_switch_regulator_init_rev_E(void)
 {
-	int i;
-
-	for (i = 0; i < gswitch_pdata_rev_E.num_subdevs; ++i) {
-		struct gpio_switch_regulator_subdev_data *gswitch_data =
-						gswitch_pdata_rev_E.subdevs[i];
-		if (gswitch_data->gpio_nr <= TEGRA_NR_GPIOS)
-			tegra_gpio_enable(gswitch_data->gpio_nr);
-	}
 	return platform_device_register(&gswitch_regulator_pdata_rev_E);
 }
 
@@ -577,26 +472,11 @@ int __init x3_regulator_init(void)
 			ARRAY_SIZE(x3_regulators));
 
 #if defined(CONFIG_REGULATOR_GPIO_SWITCH)
-#if 0
-	x3_gpio_switch_regulator_init();
-#else
-	switch(x3_get_hw_rev_pcb_version())
-	{
-		case hw_rev_pcb_type_A :
-		case hw_rev_pcb_type_B :
-		case hw_rev_pcb_type_C :
-			x3_gpio_switch_regulator_init_rev_C();
-			break;
-		case hw_rev_pcb_type_D :
-			x3_gpio_switch_regulator_init_rev_D();
-			break;
-		case hw_rev_pcb_type_E :
-		default :
 			x3_gpio_switch_regulator_init_rev_E();
-			break;
-	}
+#else
+//	lge_x3_init_regulators();
 #endif
-#endif
+
 	pm_power_off = x3_power_off;
 	return 0;
 }
