@@ -538,22 +538,5 @@ config REGULATOR_FAN53555
 	help
 	  This driver supports FAN53555 DC-DC CPU power supply.
 
-# LGE_UDPATE_S 2012/05/31 ssasuny.kim
-config REGULATOR_GPIO_SWITCH
-	bool "GPIO based enable/disable of power rails."
-	default n
-	help
-	  This driver supports gpio based switch control of the power rails.
-	  Say Yes if the given platform have the rail enable through the
-	  gpios.
-# LGE_UDPATE_E 2012/05/31 ssasuny.kim
-
-config REGULATOR_CAM_SUBPMIC_LP8720
-        bool "SUB PMIC LP8720"
-        depends on I2C
-        default y
-        help
-        Support for LP8720 SUB PMIC driver
-
 endif
 
