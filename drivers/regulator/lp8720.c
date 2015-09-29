@@ -161,7 +161,7 @@ static void lp8720_init(void)
 	return;
 }
 
-static int __devinit lp8720_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int lp8720_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
   int ret;
 	struct lp8720_platform_data *pdata;
