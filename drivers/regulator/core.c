@@ -320,20 +320,6 @@ static int regulator_check_control(struct regulator_dev *rdev)
 	return 0;
 }
 
-/* dynamic regulator control mode switching constraint check */
-static int regulator_check_control(struct regulator_dev *rdev)
-{
-	if (!rdev->constraints) {
-		rdev_err(rdev, "no constraints\n");
-		return -ENODEV;
-	}
-	if (!(rdev->constraints->valid_ops_mask & REGULATOR_CHANGE_CONTROL)) {
-		rdev_err(rdev, "operation not allowed\n");
-		return -EPERM;
-	}
-	return 0;
-}
-
 static ssize_t regulator_uV_set(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -1228,14 +1214,6 @@ static int set_machine_constraints(struct regulator_dev *rdev,
 		}
 	}
 
-	if (rdev->constraints->ramp_delay && ops->set_ramp_delay) {
-		ret = ops->set_ramp_delay(rdev, rdev->constraints->ramp_delay);
-		if (ret < 0) {
-			rdev_err(rdev, "failed to set ramp_delay\n");
-			goto out;
-		}
-	}
-
 	print_constraints(rdev);
 	return 0;
 out:
@@ -1403,12 +1381,6 @@ static struct regulator *create_regulator(struct regulator_dev *rdev,
 				   &regulator->min_uV);
 		debugfs_create_u32("max_uV", 0444, regulator->debugfs,
 				   &regulator->max_uV);
-	}
-
-	if (rdev->constraints->max_uV &&
-		(rdev->constraints->max_uV == rdev->constraints->min_uV)) {
-		regulator->min_uV = rdev->constraints->min_uV;
-		regulator->max_uV = rdev->constraints->max_uV;
 	}
 
 	/*
