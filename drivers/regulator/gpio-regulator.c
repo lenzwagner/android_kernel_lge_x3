@@ -342,7 +342,6 @@ err_memgpio:
 err_name:
 	kfree(drvdata->desc.name);
 err:
-	kfree(drvdata);
 	return ret;
 }
 
