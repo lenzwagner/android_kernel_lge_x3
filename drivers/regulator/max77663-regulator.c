@@ -831,7 +831,7 @@ static struct max77663_regulator_info max77663_regs_info[MAX77663_REGULATOR_ID_N
 	REGULATOR_SD(SD2,    SDX, SD2,  600000, 3387500, 12500),
 	REGULATOR_SD(SD3,    SDX, SD3,  600000, 3387500, 12500),
 	REGULATOR_SD(SD4,    SDX, SD4,  600000, 3387500, 12500),
-//                               
+
 	REGULATOR_LDO(LDO0, N, 800000, 2350000, 25000),
 	REGULATOR_LDO(LDO1, N, 800000, 2350000, 25000),
 	REGULATOR_LDO(LDO2, P, 800000, 3950000, 50000),
@@ -851,6 +851,7 @@ static int max77663_regulator_probe(struct platform_device *pdev)
 	struct max77663_regulator *reg;
 	struct max77663_regulator *max_regs;
 	struct max77663_regulator_platform_data *reg_pdata;
+	struct regulator_config config = { };
 	int ret = 0;
 	int id;
 	int reg_id;
@@ -908,8 +909,11 @@ static int max77663_regulator_probe(struct platform_device *pdev)
 			goto clean_exit;
 		}
 
-		reg->rdev = regulator_register(rdesc, &pdev->dev,
-					reg->pdata->reg_init_data, reg, NULL);
+		config.dev = &pdev->dev;
+		config.init_data = reg->pdata->reg_init_data;
+		config.driver_data = reg;
+
+		reg->rdev = regulator_register(rdesc, &config);
 		if (IS_ERR(reg->rdev)) {
 			dev_err(&pdev->dev, "Failed to register regulator %s\n",
 			rdesc->name);
@@ -951,7 +955,7 @@ static int max77663_regulator_remove(struct platform_device *pdev)
 
 static struct platform_driver max77663_regulator_driver = {
 	.probe = max77663_regulator_probe,
-	.remove = __devexit_p(max77663_regulator_remove),
+	.remove = max77663_regulator_remove,
 	.driver = {
 		.name = "max77663-pmic",
 		.owner = THIS_MODULE,
@@ -962,9 +966,7 @@ static int __init max77663_regulator_init(void)
 {
 	return platform_driver_register(&max77663_regulator_driver);
 }
-
-arch_initcall(max77663_regulator_init);
-
+subsys_initcall(max77663_regulator_init);
 
 static void __exit max77663_reg_exit(void)
 {
