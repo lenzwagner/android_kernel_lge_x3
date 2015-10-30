@@ -44,6 +44,10 @@ enum {
 };
 static int state;
 
+#ifdef CONFIG_MACH_X3
+/* Used in tegra cpuquiet. */
+bool wants_display_on;
+#endif
 extern struct wake_lock main_wake_lock;
 
 void register_early_suspend(struct early_suspend *handler)
@@ -93,8 +97,12 @@ static void early_suspend(struct work_struct *work)
 		goto abort;
 	}
 
-	if (debug_mask & DEBUG_SUSPEND)
+	if (debug_mask & DEBUG_SUSPEND) {
+#ifdef CONFIG_MACH_X3
+		wants_display_on = false;
+#endif
 		pr_info("early_suspend: call handlers\n");
+	}
 	list_for_each_entry(pos, &early_suspend_handlers, link) {
 		if (pos->suspend != NULL) {
 			if (debug_mask & DEBUG_VERBOSE)
@@ -131,8 +139,12 @@ static void late_resume(struct work_struct *work)
 			pr_info("late_resume: abort, state %d\n", state);
 		goto abort;
 	}
-	if (debug_mask & DEBUG_SUSPEND)
-		pr_info("late_resume: call handlers\n");
+	if (debug_mask & DEBUG_SUSPEND) {
+#ifdef CONFIG_MACH_X3
+		wants_display_on = true;
+#endif
+		pr_info("late_resume: call handlers, wants display on\n");
+	}
 	list_for_each_entry_reverse(pos, &early_suspend_handlers, link) {
 		if (pos->resume != NULL) {
 			if (debug_mask & DEBUG_VERBOSE)

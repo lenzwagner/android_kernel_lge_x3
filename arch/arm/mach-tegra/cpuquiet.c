@@ -163,6 +163,11 @@ static void hp_stats_update(unsigned int cpu, bool up)
 	mutex_unlock(&tegra_cpq_lock_stats);
 }
 
+#ifdef CONFIG_MACH_X3
+/* Use display state to try and save some power. From earlysuspend.c */
+extern bool wants_display_on;
+#endif
+
 #ifdef CONFIG_TEGRA_CLUSTER_CONTROL
 /* must be called with tegra_cpu_lock held */
 static void __update_target_cluster(unsigned int cpu_freq, bool suspend)
@@ -200,7 +205,11 @@ static void __update_target_cluster(unsigned int cpu_freq, bool suspend)
 		/* Cpu frequency dependent cluster switches */
 
 		/* Switch to G cluster if suspend rate is high enough */
-		if (suspend && cpu_freq >= idle_bottom_freq) {
+		if (suspend && cpu_freq >= idle_bottom_freq
+#ifdef CONFIG_MACH_X3
+			 && (!screen_off_lp || wants_display_on)
+#endif
+								) {
 			cpq_target_cluster_state = TEGRA_CPQ_G;
 			queue_work(cpuquiet_wq, &cpuquiet_work);
 			return;
@@ -208,8 +217,11 @@ static void __update_target_cluster(unsigned int cpu_freq, bool suspend)
 
 		if (is_lp_cluster()) {
 			if (cpu_freq >= idle_top_freq &&
-				cpq_target_cluster_state != TEGRA_CPQ_G) {
-
+				cpq_target_cluster_state != TEGRA_CPQ_G
+#if CONFIG_MACH_X3
+					&& (!screen_off_lp || wants_display_on)
+#endif
+									) {
 				/* Switch to G cluster after up_delay */
 				cpq_target_cluster_state = TEGRA_CPQ_G;
 				mod_timer(&updown_timer,
@@ -848,8 +860,9 @@ int __cpuinit tegra_auto_hotplug_init(struct mutex *cpulock)
 #ifdef CONFIG_TEGRA_CLUSTER_CONTROL
 	init_timer(&updown_timer);
 	updown_timer.function = updown_handler;
-	idle_top_freq = clk_get_max_rate(cpu_lp_clk) / 1000;
-	idle_bottom_freq = clk_get_min_rate(cpu_g_clk) / 1000;
+
+	idle_top_freq = ((clk_get_max_rate(cpu_lp_clk) / 1000) + 55000);    //475000
+	idle_bottom_freq = ((clk_get_min_rate(cpu_g_clk) / 1000) + 104000);  //370000
 
 	up_delay = msecs_to_jiffies(UP_DELAY_MS);
 	down_delay = msecs_to_jiffies(DOWN_DELAY_MS);
