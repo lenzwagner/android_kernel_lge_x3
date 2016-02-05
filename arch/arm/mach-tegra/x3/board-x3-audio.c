@@ -191,7 +191,7 @@ static struct tegra_asoc_platform_data x3_audio_pdata = {
 		.is_i2s_master	= 1,
 		.i2s_mode	= TEGRA_DAIFMT_DSP_A,
 		.sample_size	= 16,
-		.rate		= 16000,
+		.rate		= 8000,
 		.bit_clk	= 2048000,
 		.channels = 1,
 

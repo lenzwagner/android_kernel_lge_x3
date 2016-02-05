@@ -105,7 +105,6 @@ static tegra_dc_bl_output x3_bl_output_measured = {
 
 static p_tegra_dc_bl_output bl_output;
 
-#if 0
 static int x3_backlight_notify(struct device *unused, int brightness)
 {
 	int cur_sd_brightness = atomic_read(&sd_brightness);
@@ -151,10 +150,6 @@ static int x3_backlight_init(struct device *dev) {
 	return 0;
 }
 
-static void x3_backlight_exit(struct device *dev) {
-}
-
-
 static struct platform_pwm_backlight_data x3_backlight_data = {
 	.pwm_id		= 2,	//                    
 	.max_brightness	= 255,
@@ -162,7 +157,6 @@ static struct platform_pwm_backlight_data x3_backlight_data = {
 	.dft_brightness	= 224,
 	.pwm_period_ns	= 5000000,
 	.init		= x3_backlight_init,
-	.exit		= x3_backlight_exit,
 	.notify		= x3_backlight_notify,
 };
 
@@ -173,7 +167,6 @@ static struct platform_device x3_backlight_device = {
 		.platform_data = &x3_backlight_data,
 	},
 };
-#endif
 
 static bool first_disp_boot = TRUE;
 static int x3_panel_enable(struct device *dev)
@@ -189,8 +182,8 @@ static int x3_panel_enable(struct device *dev)
 			 * this is needed to be called in
 			 * late resume right after early suspend
 			 */
-			ssd2825_bridge_enable();
 			x3_hddisplay_on = TRUE;
+			ssd2825_bridge_enable();
 			return 0;
 		}
 		else{
@@ -199,30 +192,6 @@ static int x3_panel_enable(struct device *dev)
 #endif
 	x3_hddisplay_on = TRUE;
 	}
-	return 0;
-}
-
-static int x3_postpoweron(void)
-{
-	//printk("%s -- x3_hddisplay_on:%d \n",__func__,x3_hddisplay_on);
-#if 0
-	if(!x3_hddisplay_on){
-#if defined(CONFIG_MACH_RGB_CONVERTOR_SPI)
-		printk("system_state:%d, first_disp_boot:%d \n",system_state,first_disp_boot);
-		if((system_state != SYSTEM_BOOTING) && (first_disp_boot != TRUE)){
-			ssd2825_bridge_enable();
-			x3_hddisplay_on = TRUE;
-			return 0;
-		}
-		else{
-			first_disp_boot = FALSE;
-		}
-#else
-	lgit_disp_on();
-#endif
-	x3_hddisplay_on = TRUE;
-	}
-#endif
 	return 0;
 }
 
@@ -438,7 +407,7 @@ static struct tegra_dc_out_pin ssd2825_dc_out_pins[] = {
 //#if 0
 static struct tegra_dc_sd_settings x3_sd_settings = {
 	.enable = 1, /* Normal mode operation */
-	.use_auto_pwm = false,
+	.use_auto_pwm = true,
 	.hw_update_delay = 0,
 	.bin_width = -1,
 	.aggressiveness = 1,
@@ -614,7 +583,9 @@ static DECLARE_WORK(bridge_work, ssd2825_bridge_enable_worker);
 
 int ssd2825_bridge_enable_queue(void)
 {
-	queue_work(bridge_work_queue, &bridge_work);
+	if (!x3_hddisplay_on)
+		queue_work(bridge_work_queue, &bridge_work);
+
 	return 1;
 }
 
@@ -622,10 +593,9 @@ int ssd2825_bridge_enable_queue(void)
 static struct tegra_dc_out x3_disp1_out = {
 	.align		= TEGRA_DC_ALIGN_MSB,
 	.order		= TEGRA_DC_ORDER_RED_BLUE,
-	.sd_settings = &x3_sd_settings,
-	.height 		= 105,//                                              
-	.width		= 59,//                                              
-
+	.sd_settings  	= &x3_sd_settings,           
+	.height		= 105,
+	.width		= 59,
 	.type		= TEGRA_DC_OUT_RGB,
 	.parent_clk 	= "pll_p",//"pll_d_out0",
 	//.depth		= 24,
@@ -640,13 +610,13 @@ static struct tegra_dc_out x3_disp1_out = {
 	.disable	= x3_panel_disable,
 	.postsuspend	= x3_panel_postsuspend,
 	.prepoweron	= ssd2825_bridge_enable_queue,
-	.postpoweron	= x3_postpoweron,
 };
 
 static struct tegra_dc_platform_data x3_disp1_pdata = {
 	.flags		= TEGRA_DC_FLAG_ENABLED,
 	.default_out	= &x3_disp1_out,
-	.emc_clk_rate	= 300000000,
+	.emc_clk_rate		= 204000000,
+//	.min_emc_clk_rate	= 51000000, //102000000,
 	.fb		= &x3_fb_data,
 #ifdef CONFIG_TEGRA_DC_CMU
 	.cmu_enable	= 1,
@@ -703,20 +673,12 @@ static struct platform_device *x3_gfx_devices[] __initdata = {
 #if defined(CONFIG_TEGRA_NVMAP)
 	&x3_nvmap_device,
 #endif
-#if 0
-#if IS_EXTERNAL_PWM
-	&tegra_pwfm3_device,
-#else
-	&tegra_pwfm2_device,
-#endif
-#endif
+	&x3_backlight_device,
 };
 
-#if 0
 static struct platform_device *x3_bl_devices[]  = {
 	&x3_disp1_backlight_device,
 };
-#endif
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 /* put early_suspend/late_resume handlers here for the display in order
@@ -746,7 +708,7 @@ extern const int gpio_to_pingroup[];
 static void x3_panel_early_suspend(struct early_suspend *h)
 {
 	unsigned i;
-	printk("%s \n", __func__);
+//	printk("%s \n", __func__);
 	for (i = 0; i < num_registered_fb; i++){
 		if(1 != i)//                                                                                          
 			fb_blank(registered_fb[i], FB_BLANK_POWERDOWN);
@@ -766,11 +728,18 @@ static void x3_panel_early_suspend(struct early_suspend *h)
 		gpio_direction_input(rgb_bridge_gpios[i].gpio);
 		tegra_gpio_enable(rgb_bridge_gpios[i].gpio);
 	}
+#ifdef CONFIG_TEGRA_CONVSERVATIVE_GOV_ON_EARLYSUPSEND
+	cpufreq_store_default_gov();
+	cpufreq_change_gov(cpufreq_conservative_gov);
+#endif
 }
 
 static void x3_panel_late_resume(struct early_suspend *h)
 {
 	unsigned i;
+#ifdef CONFIG_TEGRA_CONVSERVATIVE_GOV_ON_EARLYSUPSEND
+	cpufreq_restore_default_gov();
+#endif
 	for (i = 0; i < ARRAY_SIZE(rgb_bridge_gpios); i++) {
 		tegra_pinmux_set_tristate(
 			gpio_to_pingroup[rgb_bridge_gpios[i].gpio],
@@ -840,7 +809,7 @@ int __init x3_panel_init(void)
 	x3_carveouts[1].size = tegra_carveout_size;
 #endif
 
-//	tegra_gpio_enable(x3_hdmi_hpd);
+	tegra_gpio_enable(x3_hdmi_hpd);
 	err = gpio_request(x3_hdmi_hpd, "hdmi_hpd");
 	if (err < 0) {
 		pr_err("%s: gpio_request failed %d\n", __func__, err);

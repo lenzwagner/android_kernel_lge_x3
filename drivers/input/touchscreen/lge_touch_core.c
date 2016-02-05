@@ -41,7 +41,7 @@
 
 #include <linux/input/lge_touch_core.h>
 
-#define MINFREQ_FOR_TS 1
+//#define MINFREQ_FOR_TS 1
 #define NOLAG_FREQ 408000
 
 struct lge_touch_data
