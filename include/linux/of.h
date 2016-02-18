@@ -301,6 +301,11 @@ const char *of_prop_next_string(struct property *prop, const char *cur);
 
 #else /* CONFIG_OF */
 
+static inline struct device_node *of_find_node_by_path(const char *path)
+{
+	return NULL;
+}
+
 static inline bool of_have_populated_dt(void)
 {
 	return false;
