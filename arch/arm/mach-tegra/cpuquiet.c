@@ -67,6 +67,7 @@ static wait_queue_head_t wait_cpu;
  * Settings will be enforced directly upon write to no_lp
  */
 static int no_lp;
+static bool screen_off_lp;
 static bool enable;
 static unsigned int idle_bottom_freq;
 #ifdef CONFIG_TEGRA_CLUSTER_CONTROL
@@ -701,6 +702,7 @@ CPQ_ATTRIBUTE(down_delay, 0644, ulong, delay_callback);
 CPQ_BASIC_ATTRIBUTE(idle_bottom_freq, 0644, uint);
 CPQ_ATTRIBUTE(hotplug_timeout, 0644, ulong, delay_callback);
 CPQ_ATTRIBUTE(enable, 0644, bool, enable_callback);
+CPQ_BASIC_ATTRIBUTE(screen_off_lp, 0644, bool);
 
 static struct attribute *tegra_auto_attributes[] = {
 #ifdef CONFIG_TEGRA_CLUSTER_CONTROL
@@ -712,6 +714,7 @@ static struct attribute *tegra_auto_attributes[] = {
 	&idle_bottom_freq_attr.attr,
 	&enable_attr.attr,
 	&hotplug_timeout_attr.attr,
+	&screen_off_lp_attr.attr,
 	NULL,
 };
 
