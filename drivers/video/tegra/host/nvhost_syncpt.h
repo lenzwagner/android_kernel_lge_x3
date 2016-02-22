@@ -44,6 +44,12 @@ struct nvhost_syncpt {
 	atomic_t *lock_counts;
 	const char **syncpt_names;
 	struct nvhost_syncpt_attr *syncpt_attrs;
+#ifdef CONFIG_TEGRA_GRHOST_SYNC
+	struct nvhost_sync_timeline **timeline;
+	struct nvhost_sync_timeline *timeline_invalid;
+	struct nvhost_syncpt_attr invalid_min_attr;
+	struct nvhost_syncpt_attr invalid_max_attr;
+#endif
 };
 
 int nvhost_syncpt_init(struct platform_device *, struct nvhost_syncpt *);
@@ -90,16 +96,6 @@ int nvhost_syncpt_nb_pts(struct nvhost_syncpt *sp);
 int nvhost_syncpt_nb_bases(struct nvhost_syncpt *sp);
 int nvhost_syncpt_nb_mlocks(struct nvhost_syncpt *sp);
 
-static inline bool nvhost_syncpt_check_max(struct nvhost_syncpt *sp,
-		u32 id, u32 real)
-{
-	u32 max;
-	if (nvhost_syncpt_client_managed(sp, id))
-		return true;
-	max = nvhost_syncpt_read_max(sp, id);
-	return (s32)(max - real) >= 0;
-}
-
 /**
  * Returns true if syncpoint min == max
  */
@@ -116,6 +112,8 @@ void nvhost_syncpt_cpu_incr(struct nvhost_syncpt *sp, u32 id);
 
 u32 nvhost_syncpt_update_min(struct nvhost_syncpt *sp, u32 id);
 bool nvhost_syncpt_is_expired(struct nvhost_syncpt *sp, u32 id, u32 thresh);
+int nvhost_syncpt_compare(struct nvhost_syncpt *sp, u32 id,
+				u32 thresh_a, u32 thresh_b);
 
 void nvhost_syncpt_save(struct nvhost_syncpt *sp);
 
@@ -149,4 +147,6 @@ int nvhost_mutex_try_lock(struct nvhost_syncpt *sp, int idx);
 
 void nvhost_mutex_unlock(struct nvhost_syncpt *sp, int idx);
 
+struct nvhost_sync_timeline *nvhost_syncpt_timeline(struct nvhost_syncpt *sp,
+		int idx);
 #endif

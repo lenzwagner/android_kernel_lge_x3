@@ -46,6 +46,7 @@
 #include "t20/t20.h"
 #include "t30/t30.h"
 #include "t114/t114.h"
+#include "nvhost_sync.h"
 
 #define DRIVER_NAME		"host1x"
 
@@ -138,6 +139,78 @@ static int nvhost_ioctl_ctrl_syncpt_waitex(struct nvhost_ctrl_userctx *ctx,
 	  args->timeout, args->value, err);
 
 	return err;
+}
+
+static int nvhost_ioctl_ctrl_sync_fence_create(struct nvhost_ctrl_userctx *ctx,
+	struct nvhost_ctrl_sync_fence_create_args *args)
+{
+#ifdef CONFIG_TEGRA_GRHOST_SYNC
+	int err = 0;
+	int i;
+	u32 *ids, *vals;
+	char name[32];
+	const char __user *args_name =
+		(const char __user *)(uintptr_t)args->name;
+	const struct nvhost_ctrl_sync_fence_info __user *args_pts =
+		(const void __user *)(uintptr_t)args->pts;
+	struct sync_fence *fence = NULL;
+	int fd;
+
+	if (args_name) {
+		if (strncpy_from_user(name, args_name, sizeof(name)) < 0)
+			return -EFAULT;
+		name[sizeof(name) - 1] = '\0';
+	} else {
+		name[0] = '\0';
+	}
+
+	ids = kmalloc(sizeof(*ids) * args->num_pts, GFP_KERNEL);
+	vals = kmalloc(sizeof(*vals) * args->num_pts, GFP_KERNEL);
+	if (!ids || !vals) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	for (i = 0; i < args->num_pts; i++) {
+		if (get_user(ids[i], &args_pts[i].id) ||
+			get_user(vals[i], &args_pts[i].thresh)) {
+			err = -EFAULT;
+			goto out;
+		}
+
+		if (ids[i] >= nvhost_syncpt_nb_pts(&ctx->dev->syncpt) &&
+		    ids[i] != NVSYNCPT_INVALID) {
+			err = -EINVAL;
+			goto out;
+		}
+	}
+
+	fence = nvhost_sync_create_fence(&ctx->dev->syncpt, ids, vals,
+			args->num_pts, name);
+	if (IS_ERR(fence)) {
+		err = PTR_ERR(fence);
+		fence = NULL;
+		goto out;
+	}
+
+	fd = get_unused_fd();
+	if (fd < 0) {
+		err = fd;
+		goto out;
+	}
+
+	args->fence_fd = fd;
+	sync_fence_install(fence, fd);
+
+out:
+	if (err < 0 && fence)
+		sync_fence_put(fence);
+	kfree(vals);
+	kfree(ids);
+	return err;
+#else
+	return -EINVAL;
+#endif
 }
 
 static int nvhost_ioctl_ctrl_module_mutex(struct nvhost_ctrl_userctx *ctx,
@@ -265,6 +338,9 @@ static long nvhost_ctrlctl(struct file *filp,
 		break;
 	case NVHOST_IOCTL_CTRL_SYNCPT_WAIT:
 		err = nvhost_ioctl_ctrl_syncpt_waitex(priv, (void *)buf);
+		break;
+	case NVHOST_IOCTL_CTRL_SYNC_FENCE_CREATE:
+		err = nvhost_ioctl_ctrl_sync_fence_create(priv, (void *)buf);
 		break;
 	case NVHOST_IOCTL_CTRL_MODULE_MUTEX:
 		err = nvhost_ioctl_ctrl_module_mutex(priv, (void *)buf);
