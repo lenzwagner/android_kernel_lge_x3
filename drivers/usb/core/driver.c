@@ -1694,6 +1694,18 @@ static int autosuspend_check(struct usb_device *udev)
 		pr_err("init_name: %s\n", udev->dev.init_name);
 		return -EOPNOTSUPP;
 	}
+
+	/*
+	 * If the device is a direct child of the root hub and the HCD
+	 * doesn't handle wakeup requests, don't allow autosuspend when
+	 * wakeup is needed.
+	 */
+	if (w && udev->parent == udev->bus->root_hub &&
+			bus_to_hcd(udev->bus)->cant_recv_wakeups) {
+		dev_dbg(&udev->dev, "HCD doesn't handle wakeup requests\n");
+		return -EOPNOTSUPP;
+	}
+
 	udev->do_remote_wakeup = w;
 	return 0;
 }
