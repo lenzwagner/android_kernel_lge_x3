@@ -267,7 +267,7 @@ int ipc_addid(struct ipc_ids* ids, struct kern_ipc_perm* new, int size)
 	rcu_read_lock();
 	spin_lock(&new->lock);
 
-	id = idr_alloc(&ids->ipcs_idr, new, &id);
+	id = idr_alloc(&ids->ipcs_idr, new, id, 0, GFP_NOWAIT);
 	idr_preload_end();
 	if (id < 0) {
 		spin_unlock(&new->lock);
