@@ -181,7 +181,7 @@ static unsigned int get_lightest_loaded_cpu_n(void)
 static void runnables_work_func(struct work_struct *work)
 {
 	unsigned int cpu = nr_cpu_ids;
-	int action, state;
+	int action;
 
 	if (runnables_state != RUNNING)
 		return;

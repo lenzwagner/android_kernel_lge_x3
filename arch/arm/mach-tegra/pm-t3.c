@@ -29,7 +29,6 @@
 #include <linux/clockchips.h>
 #include <linux/cpu_pm.h>
 
-#include <mach/gpio.h>
 #include <mach/iomap.h>
 #include <mach/irqs.h>
 #include <mach/io_dpd.h>
@@ -38,8 +37,6 @@
 #include <asm/smp_plat.h>
 #include <asm/cputype.h>
 #include <asm/hardware/gic.h>
-
-#include <trace/events/power.h>
 
 #include "clock.h"
 #include "cpuidle.h"
@@ -400,8 +397,6 @@ int tegra_cluster_control(unsigned int us, unsigned int flags)
 		if (!is_g_cluster_present())
 			return -EPERM;
 
-	trace_power_start(POWER_PSTATE, target_cluster, 0);
-
 	if (flags & TEGRA_POWER_CLUSTER_IMMEDIATE)
 		us = 0;
 
@@ -622,6 +617,7 @@ static void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
 #ifdef CONFIG_PM_SLEEP
 struct tegra_io_dpd *tegra_io_dpd_get(struct device *dev)
 {
+#ifdef CONFIG_TEGRA_IO_DPD
 	int i;
 	const char *name = dev ? dev_name(dev) : NULL;
 	if (name) {
@@ -634,6 +630,7 @@ struct tegra_io_dpd *tegra_io_dpd_get(struct device *dev)
 	}
 	dev_info(dev, "Error: tegra3 io dpd not supported for %s\n",
 		((name) ? name : "NULL"));
+#endif
 	return NULL;
 }
 

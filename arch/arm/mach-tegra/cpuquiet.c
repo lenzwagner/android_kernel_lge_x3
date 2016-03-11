@@ -94,7 +94,7 @@ enum {
 	TEGRA_CPQ_LP,
 };
 
-static int cpq_target_state = INITIAL_STATE;
+static int cpq_target_state;
 static int cpq_target_cluster_state;
 
 static int cpq_state;
@@ -863,9 +863,8 @@ int __cpuinit tegra_auto_hotplug_init(struct mutex *cpulock)
 #ifdef CONFIG_TEGRA_CLUSTER_CONTROL
 	init_timer(&updown_timer);
 	updown_timer.function = updown_handler;
-
-	idle_top_freq = ((clk_get_max_rate(cpu_lp_clk) / 1000) + 55000);    //475000
-	idle_bottom_freq = ((clk_get_min_rate(cpu_g_clk) / 1000) + 104000);  //370000
+	idle_top_freq = clk_get_max_rate(cpu_lp_clk) / 1000;
+	idle_bottom_freq = clk_get_min_rate(cpu_g_clk) / 1000;
 
 	up_delay = msecs_to_jiffies(UP_DELAY_MS);
 	down_delay = msecs_to_jiffies(DOWN_DELAY_MS);
